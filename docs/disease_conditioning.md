@@ -107,10 +107,39 @@ nnUNetv2_predict -i INPUT -o OUTPUT -d DATASET_ID \
     -tr nnUNetTrainerDA5DiseaseVec -c 3d_fullres
 ```
 
-### With disease conditioning
+### With disease conditioning (recommended)
 
-To supply disease vectors during inference, use the network's attribute API
-from a Python script:
+During training, the trainer automatically copies `disease_map.json` to the model
+output folder.  The dedicated inference script auto-detects this file and sets the
+disease vector per case:
+
+```bash
+python -m nnunetv2.inference.predict_disease_conditioned \
+    -i /path/to/input \
+    -o /path/to/output \
+    -m /path/to/model_folder \
+    -f 0
+```
+
+You can also point to a custom disease map:
+
+```bash
+python -m nnunetv2.inference.predict_disease_conditioned \
+    -i /path/to/input \
+    -o /path/to/output \
+    -m /path/to/model_folder \
+    --disease_json /path/to/disease_map.json
+```
+
+The script:
+1. Looks for `disease_map.json` in the model folder (auto-copied during training)
+2. Falls back to `--disease_json` if provided explicitly
+3. If neither is found, runs baseline inference (no conditioning)
+4. Groups input files by case ID, sets the disease vector per case, predicts
+
+### Programmatic API (advanced)
+
+For custom workflows, you can use the network's attribute API directly:
 
 ```python
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
@@ -119,21 +148,16 @@ import json, torch
 predictor = nnUNetPredictor(...)
 predictor.initialize_from_trained_model_folder(model_folder, ...)
 
-# Load disease map
 with open("disease_map.json") as f:
     disease_map = json.load(f)
 
-# For each case, set the disease vector before prediction
 for case_id, input_file, output_file in cases:
     vec = torch.tensor([disease_map[case_id]], dtype=torch.float32, device=predictor.device)
-    # Access the unwrapped network
     mod = predictor.network
     if hasattr(mod, '_orig_mod'):
         mod = mod._orig_mod
     mod.set_disease_vec(vec)
-
     predictor.predict_from_files([[input_file]], [output_file], ...)
-
     mod.clear_disease_vec()
 ```
 
@@ -196,5 +220,6 @@ Tests verify:
 | `nnunetv2/architectures/__init__.py` | New package |
 | `nnunetv2/architectures/disease_conditioned_unet.py` | `DiseaseInjector` + `DiseaseConditionedResEncUNet` |
 | `nnunetv2/training/nnUNetTrainer/variants/data_augmentation/nnUNetTrainerDA5DiseaseVec.py` | `nnUNetTrainerDA5DiseaseVec` + `_100epochs` variant |
+| `nnunetv2/inference/predict_disease_conditioned.py` | Standalone disease-conditioned inference CLI |
 | `nnunetv2/tests/test_disease_conditioning.py` | Sanity tests |
 | `docs/disease_conditioning.md` | This document |
