@@ -126,9 +126,39 @@ nnUNetv2_predict -i INPUT -o OUTPUT -d DATASET_ID \
     -tr nnUNetTrainerDA5FiLM -c 3d_fullres
 ```
 
-### With disease conditioning
+### With disease conditioning (recommended)
 
-To supply disease vectors during inference, use the network's attribute API:
+During training, the trainer automatically copies `disease_map.json` to the model
+output folder.  The dedicated inference script auto-detects this file and sets the
+disease vector per case:
+
+```bash
+python -m nnunetv2.inference.predict_disease_conditioned \
+    -i /path/to/input \
+    -o /path/to/output \
+    -m /path/to/model_folder \
+    -f 0
+```
+
+You can also point to a custom disease map:
+
+```bash
+python -m nnunetv2.inference.predict_disease_conditioned \
+    -i /path/to/input \
+    -o /path/to/output \
+    -m /path/to/model_folder \
+    --disease_json /path/to/disease_map.json
+```
+
+The script:
+1. Looks for `disease_map.json` in the model folder (auto-copied during training)
+2. Falls back to `--disease_json` if provided explicitly
+3. If neither is found, runs baseline inference (no conditioning)
+4. Groups input files by case ID, sets the disease vector per case, predicts
+
+### Programmatic API (advanced)
+
+For custom workflows, you can use the network's attribute API directly:
 
 ```python
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
@@ -225,5 +255,6 @@ Tests verify:
 | `nnunetv2/architectures/__init__.py` | New package |
 | `nnunetv2/architectures/film_conditioned_unet.py` | `FiLMLayer` + `FiLMConditionedResEncUNet` |
 | `nnunetv2/training/.../nnUNetTrainerDA5FiLM.py` | `nnUNetTrainerDA5FiLM` + `_100epochs` variant |
+| `nnunetv2/inference/predict_disease_conditioned.py` | Standalone disease-conditioned inference CLI |
 | `nnunetv2/tests/test_film_conditioning.py` | Sanity tests |
 | `docs/film_conditioning.md` | This document |
