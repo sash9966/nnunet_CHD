@@ -87,18 +87,37 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
         return disease_map
 
     # ------------------------------------------------------------------
-    # Network building  (override the @staticmethod as an instance method)
+    # Network building
     # ------------------------------------------------------------------
+    # The parent class defines build_network_architecture as a @staticmethod.
+    # During training it is called via self (instance method), but during
+    # inference nnUNetPredictor calls trainer_class.build_network_architecture(...)
+    # as an unbound/static call.  In the latter case 'self' receives the first
+    # positional arg (architecture_class_name) instead of the trainer instance.
+    # We detect this and unshift the arguments.
     def build_network_architecture(  # type: ignore[override]
         self,
-        architecture_class_name: str,
-        arch_init_kwargs: dict,
-        arch_init_kwargs_req_import: Union[List[str], Tuple[str, ...]],
-        num_input_channels: int,
-        num_output_channels: int,
+        architecture_class_name=None,
+        arch_init_kwargs=None,
+        arch_init_kwargs_req_import=None,
+        num_input_channels=None,
+        num_output_channels=None,
         enable_deep_supervision: bool = True,
     ) -> nn.Module:
         """Build the base network then wrap it with FiLM conditioning."""
+        if isinstance(self, str):
+            # static call from predictor: self is actually architecture_class_name
+            (architecture_class_name, arch_init_kwargs, arch_init_kwargs_req_import,
+             num_input_channels, num_output_channels) = (
+                self, architecture_class_name, arch_init_kwargs,
+                arch_init_kwargs_req_import, num_input_channels
+            )
+            disease_K, disease_H, disease_E = 8, 64, 32
+        else:
+            disease_K = self.disease_K
+            disease_H = self.disease_H
+            disease_E = self.disease_E
+
         base_network = nnUNetTrainer.build_network_architecture(
             architecture_class_name,
             arch_init_kwargs,
@@ -110,9 +129,9 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
 
         wrapped = FiLMConditionedResEncUNet(
             base_network,
-            disease_K=self.disease_K,
-            disease_H=self.disease_H,
-            disease_E=self.disease_E,
+            disease_K=disease_K,
+            disease_H=disease_H,
+            disease_E=disease_E,
         )
 
         # He-init the disease MLP (FiLM heads are already zero-init)
