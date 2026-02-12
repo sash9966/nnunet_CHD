@@ -122,8 +122,16 @@ def test_gradients_all_components():
     x = torch.randn(B, 1, 32, 32, 32)
     dv = torch.randint(0, 2, (B, K)).float()
 
-    out = net(x, disease_vec=dv)
-    loss = out.sum()
+    result = net(x, disease_vec=dv)
+    # forward returns (seg_output, aux_disease_logits) in training mode
+    if isinstance(result, tuple):
+        seg_out, aux_logits = result
+    else:
+        seg_out, aux_logits = result, None
+
+    loss = seg_out.sum()
+    if aux_logits is not None:
+        loss = loss + torch.nn.functional.binary_cross_entropy_with_logits(aux_logits, dv)
     loss.backward()
 
     # FiLM heads should receive gradients
@@ -141,7 +149,12 @@ def test_gradients_all_components():
         assert param.grad is not None, f"disease_mlp.{name} has no grad"
         assert param.grad.abs().sum() > 0, f"disease_mlp.{name} has zero grad"
 
-    print("PASSED  (all FiLM heads + disease_mlp have non-zero gradients from step 1)")
+    # disease_classifier gets gradients from auxiliary loss
+    for name, param in net.disease_classifier.named_parameters():
+        assert param.grad is not None, f"disease_classifier.{name} has no grad"
+        assert param.grad.abs().sum() > 0, f"disease_classifier.{name} has zero grad"
+
+    print("PASSED  (all FiLM heads + disease_mlp + disease_classifier have non-zero gradients)")
 
 
 # ---- test 3: set_disease_vec inference API ----

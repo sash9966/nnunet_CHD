@@ -115,6 +115,11 @@ class FiLMConditionedResEncUNet(nn.Module):
             FiLMLayer(ch, disease_E) for ch in decoder_stage_channels
         ])
 
+        # ---- auxiliary disease classifier (from bottleneck features) ----
+        # Forces the encoder to learn disease-relevant representations.
+        # Only used during training; adds BCE loss on disease prediction.
+        self.disease_classifier = nn.Linear(bottleneck_channels, disease_K)
+
         # ---- inference attribute (set via set_disease_vec) ----
         self._current_disease_vec: Optional[torch.Tensor] = None
 
@@ -153,7 +158,8 @@ class FiLMConditionedResEncUNet(nn.Module):
         self,
         x: torch.Tensor,
         disease_vec: Optional[torch.Tensor] = None,
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+    ) -> Union[torch.Tensor, List[torch.Tensor],
+               tuple]:
         # resolve effective disease_vec
         dv = disease_vec if disease_vec is not None else self._current_disease_vec
 
@@ -167,6 +173,15 @@ class FiLMConditionedResEncUNet(nn.Module):
 
         skips = self.encoder(x)
         skips = list(skips)  # make mutable
+
+        # Auxiliary disease classification from bottleneck (training only).
+        # Predict disease flags from image features to force encoder to
+        # learn disease-relevant representations.
+        aux_disease_logits = None
+        if self.training:
+            # global average pool over spatial dims → (B, C)
+            pooled = skips[-1].mean(dim=list(range(2, skips[-1].ndim)))
+            aux_disease_logits = self.disease_classifier(pooled)
 
         # FiLM at bottleneck
         skips[-1] = self.bottleneck_film(skips[-1], e)
@@ -188,5 +203,11 @@ class FiLMConditionedResEncUNet(nn.Module):
 
         seg_outputs = seg_outputs[::-1]
         if not self.decoder.deep_supervision:
-            return seg_outputs[0]
-        return seg_outputs
+            seg_out = seg_outputs[0]
+        else:
+            seg_out = seg_outputs
+
+        # During training, return (seg_output, aux_logits) tuple
+        if aux_disease_logits is not None:
+            return seg_out, aux_disease_logits
+        return seg_out

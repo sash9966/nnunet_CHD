@@ -60,6 +60,8 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
         self.disease_E: int = 32
         # FiLM components learn faster (multiplier on base LR)
         self.film_lr_multiplier: float = 10.0
+        # auxiliary disease classification loss weight
+        self.aux_disease_loss_weight: float = 0.1
         # populated in initialize()
         self.disease_map: Optional[Dict[str, List[int]]] = None
 
@@ -153,7 +155,7 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
     # ------------------------------------------------------------------
     def configure_optimizers(self):
         # Split params into two groups: main network vs FiLM components
-        film_param_names = {'disease_mlp', 'bottleneck_film', 'decoder_films'}
+        film_param_names = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
         film_params = []
         main_params = []
         for name, param in self.network.named_parameters():
@@ -403,8 +405,20 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
         self.optimizer.zero_grad(set_to_none=True)
 
         with autocast(self.device.type, enabled=True) if self.device.type == "cuda" else dummy_context():
-            output = self.network(data, disease_vec=disease_vec)
+            result = self.network(data, disease_vec=disease_vec)
+            # forward returns (seg_output, aux_disease_logits) during training
+            if isinstance(result, tuple):
+                output, aux_logits = result
+            else:
+                output, aux_logits = result, None
+
             l = self.loss(output, target)
+
+            # auxiliary disease classification loss
+            if aux_logits is not None and disease_vec is not None:
+                aux_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+                    aux_logits, disease_vec)
+                l = l + self.aux_disease_loss_weight * aux_loss
 
         if self.grad_scaler is not None:
             self.grad_scaler.scale(l).backward()
@@ -418,6 +432,29 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
             self.optimizer.step()
 
         return {"loss": l.detach().cpu().numpy()}
+
+    # ------------------------------------------------------------------
+    # Gradient diagnostic logging (every 10 epochs)
+    # ------------------------------------------------------------------
+    def on_train_epoch_end(self, train_outputs):
+        super().on_train_epoch_end(train_outputs)
+        if self.current_epoch % 10 == 0:
+            mod = self._get_unwrapped_network()
+            film_names = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
+            film_grad = 0.0
+            total_grad = 0.0
+            for name, param in mod.named_parameters():
+                if param.grad is not None:
+                    g = param.grad.norm().item()
+                    total_grad += g
+                    if any(name.startswith(prefix) for prefix in film_names):
+                        film_grad += g
+            if total_grad > 0:
+                pct = 100 * film_grad / total_grad
+                self.print_to_log_file(
+                    f"[Grad diagnostic] Disease components: {film_grad:.4f} / "
+                    f"Total: {total_grad:.2f} = {pct:.2f}%"
+                )
 
     # ------------------------------------------------------------------
     # Validation step  (DA5 overrides this, so we override it here too)
