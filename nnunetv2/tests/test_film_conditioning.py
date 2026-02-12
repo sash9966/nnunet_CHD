@@ -7,9 +7,10 @@ Run with:
 Tests
 -----
 1. Forward shape test – baseline and conditioned paths produce identical shapes.
-2. Gradient test – disease_mlp and FiLM head parameters receive non-zero grads.
+2. Gradient test – disease_mlp and FiLM head parameters receive non-zero grads
+   from the first step (small-random init ensures immediate gradient flow).
 3. set_disease_vec inference API works correctly.
-4. Zero-init identity – with all-zero disease_vec, output matches baseline.
+4. Near-identity – with all-zero disease_vec, output is close to baseline.
 5. Ablation smoke test – different disease vectors produce different outputs.
 6. 2D forward test.
 """
@@ -112,8 +113,8 @@ def test_forward_shapes_no_ds():
 
 # ---- test 2: gradient test ----
 
-def test_gradients_film_heads():
-    print("Test 2a: Gradient test (FiLM heads at zero-init) ... ", end="")
+def test_gradients_all_components():
+    print("Test 2: Gradient test (all components from first step) ... ", end="")
     K = 8
     B = 2
     net = _make_network(ndim=3, disease_K=K, deep_supervision=False)
@@ -125,7 +126,7 @@ def test_gradients_film_heads():
     loss = out.sum()
     loss.backward()
 
-    # FiLM head params get grads even at zero-init (d(loss)/d(gamma) = x, d(loss)/d(beta) = 1)
+    # FiLM heads should receive gradients
     for name, param in net.bottleneck_film.named_parameters():
         assert param.grad is not None, f"bottleneck_film.{name} has no grad"
         assert param.grad.abs().sum() > 0, f"bottleneck_film.{name} has zero grad"
@@ -135,35 +136,12 @@ def test_gradients_film_heads():
             assert param.grad is not None, f"decoder_films[{i}].{name} has no grad"
             assert param.grad.abs().sum() > 0, f"decoder_films[{i}].{name} has zero grad"
 
-    # disease_mlp gets zero grads at zero-init because FiLM head weights are 0
-    # (gradient is blocked: d(gamma)/d(e) = gamma_head.weight = 0).
-    # This is expected; after one optimizer step moves FiLM heads from zero,
-    # disease_mlp will receive gradients.
-    print("PASSED  (FiLM heads have non-zero gradients)")
-
-
-def test_gradients_full_flow():
-    print("Test 2b: Gradient test (full flow with non-zero FiLM heads) ... ", end="")
-    K = 8
-    B = 2
-    net = _make_network(ndim=3, disease_K=K, deep_supervision=False)
-    # Simulate state after a few optimizer steps: give FiLM heads small non-zero weights
-    for film in [net.bottleneck_film] + list(net.decoder_films):
-        nn.init.normal_(film.gamma_head.weight, std=0.01)
-        nn.init.normal_(film.beta_head.weight, std=0.01)
-    net.train()
-    x = torch.randn(B, 1, 32, 32, 32)
-    dv = torch.randint(0, 2, (B, K)).float()
-
-    out = net(x, disease_vec=dv)
-    loss = out.sum()
-    loss.backward()
-
+    # disease_mlp gets gradients immediately (small-random init, W≠0)
     for name, param in net.disease_mlp.named_parameters():
         assert param.grad is not None, f"disease_mlp.{name} has no grad"
         assert param.grad.abs().sum() > 0, f"disease_mlp.{name} has zero grad"
 
-    print("PASSED  (disease_mlp receives non-zero gradients)")
+    print("PASSED  (all FiLM heads + disease_mlp have non-zero gradients from step 1)")
 
 
 # ---- test 3: set_disease_vec inference API ----
@@ -192,10 +170,10 @@ def test_set_disease_vec():
     print("PASSED")
 
 
-# ---- test 4: zero-init identity ----
+# ---- test 4: near-identity with zeros disease_vec ----
 
-def test_zero_init_identity():
-    print("Test 4: Zero-init identity (zeros disease_vec ≈ baseline) ... ", end="")
+def test_near_identity():
+    print("Test 4: Near-identity (zeros disease_vec ≈ baseline) ... ", end="")
     K = 8
     B = 2
     net = _make_network(ndim=3, disease_K=K, deep_supervision=False)
@@ -206,13 +184,16 @@ def test_zero_init_identity():
         out_baseline = net(x, disease_vec=None)
         out_zeros = net(x, disease_vec=torch.zeros(B, K))
 
-    # Because FiLM heads are zero-init and MLP maps zeros→zeros,
-    # gamma=0, beta=0, so (1+0)*x + 0 = x.  Output should match baseline.
-    assert torch.allclose(out_baseline, out_zeros, atol=1e-5), (
-        f"Zero disease_vec output should match baseline. "
-        f"Max diff: {(out_baseline - out_zeros).abs().max().item():.2e}"
+    # With small-random init and zero disease_vec input:
+    # MLP maps zeros→non-zero (due to biases in MLP), but the FiLM head
+    # biases are zero-init, so gamma/beta are small.  Output should be
+    # very close to baseline.
+    max_diff = (out_baseline - out_zeros).abs().max().item()
+    assert max_diff < 0.5, (
+        f"Zero disease_vec output should be close to baseline. "
+        f"Max diff: {max_diff:.2e}"
     )
-    print("PASSED")
+    print(f"PASSED  (max diff: {max_diff:.2e})")
 
 
 # ---- test 5: ablation smoke test ----
@@ -223,10 +204,6 @@ def test_ablation_smoke():
     B = 2
     net = _make_network(ndim=3, disease_K=K, deep_supervision=False)
     net.eval()
-    # use a trained-like state: randomize FiLM head weights
-    for film in [net.bottleneck_film] + list(net.decoder_films):
-        nn.init.normal_(film.gamma_head.weight, std=0.1)
-        nn.init.normal_(film.beta_head.weight, std=0.1)
 
     x = torch.randn(B, 1, 32, 32, 32)
     dv_zeros = torch.zeros(B, K)
@@ -270,10 +247,9 @@ def main():
     print("=" * 60)
     test_forward_shapes()
     test_forward_shapes_no_ds()
-    test_gradients_film_heads()
-    test_gradients_full_flow()
+    test_gradients_all_components()
     test_set_disease_vec()
-    test_zero_init_identity()
+    test_near_identity()
     test_ablation_smoke()
     test_2d_forward()
     print("=" * 60)

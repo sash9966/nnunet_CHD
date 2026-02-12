@@ -58,6 +58,8 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
         self.disease_K: int = 8
         self.disease_H: int = 64
         self.disease_E: int = 32
+        # FiLM components learn faster (multiplier on base LR)
+        self.film_lr_multiplier: float = 10.0
         # populated in initialize()
         self.disease_map: Optional[Dict[str, List[int]]] = None
 
@@ -145,6 +147,42 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
     def initialize(self):
         super().initialize()
         self.disease_map = self._load_disease_map()
+
+    # ------------------------------------------------------------------
+    # Optimizer: higher LR for FiLM components (disease_mlp + FiLM heads)
+    # ------------------------------------------------------------------
+    def configure_optimizers(self):
+        # Split params into two groups: main network vs FiLM components
+        film_param_names = {'disease_mlp', 'bottleneck_film', 'decoder_films'}
+        film_params = []
+        main_params = []
+        for name, param in self.network.named_parameters():
+            if any(name.startswith(prefix) or f'.{prefix}' in name
+                   for prefix in film_param_names):
+                film_params.append(param)
+            else:
+                main_params.append(param)
+
+        optimizer = torch.optim.SGD(
+            [
+                {'params': main_params},
+                {'params': film_params, 'lr': self.initial_lr * self.film_lr_multiplier},
+            ],
+            lr=self.initial_lr,
+            weight_decay=self.weight_decay,
+            momentum=0.99,
+            nesterov=True,
+        )
+        from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
+        lr_scheduler = PolyLRScheduler(optimizer, self.initial_lr, self.num_epochs)
+        return optimizer, lr_scheduler
+
+    def on_train_epoch_start(self):
+        # Parent calls lr_scheduler.step() which sets ALL param groups to the
+        # same LR.  We then scale the FiLM group by the multiplier.
+        super().on_train_epoch_start()
+        if len(self.optimizer.param_groups) > 1:
+            self.optimizer.param_groups[1]['lr'] *= self.film_lr_multiplier
 
     # ------------------------------------------------------------------
     # on_train_start: copy disease_map.json to model output folder

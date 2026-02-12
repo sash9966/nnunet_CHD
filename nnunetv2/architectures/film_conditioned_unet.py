@@ -26,9 +26,8 @@ class FiLMLayer(nn.Module):
 
         y = (1 + gamma) * x + beta
 
-    Both ``gamma_head`` and ``beta_head`` are zero-initialised so that the
-    default output is the identity:  ``y = x``  when the disease embedding is
-    all-zeros (or just after init).
+    Weights are initialised with small random values (near-identity) so that
+    gradient flow to the disease MLP is immediate.  Biases are zero-init.
     """
 
     def __init__(self, feature_channels: int, embed_dim: int):
@@ -36,10 +35,12 @@ class FiLMLayer(nn.Module):
         self.gamma_head = nn.Linear(embed_dim, feature_channels)
         self.beta_head = nn.Linear(embed_dim, feature_channels)
 
-        # Zero-init so FiLM starts as identity (gamma=0, beta=0 → y=x)
-        nn.init.zeros_(self.gamma_head.weight)
+        # Small random init: near-identity (gamma≈0, beta≈0) but W≠0 so
+        # gradients flow through to disease_mlp from the very first step.
+        # Zero-init blocks gradient flow: dL/de = W^T @ dL/dgamma = 0 when W=0.
+        nn.init.normal_(self.gamma_head.weight, mean=0, std=0.01)
         nn.init.zeros_(self.gamma_head.bias)
-        nn.init.zeros_(self.beta_head.weight)
+        nn.init.normal_(self.beta_head.weight, mean=0, std=0.01)
         nn.init.zeros_(self.beta_head.bias)
 
     def forward(self, x: torch.Tensor, e: torch.Tensor) -> torch.Tensor:
