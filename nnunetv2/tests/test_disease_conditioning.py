@@ -138,9 +138,15 @@ def test_gradients():
     x = torch.randn(B, 1, 32, 32, 32)
     dv = torch.randint(0, 2, (B, K)).float()
 
-    out = net(x, disease_vec=dv)
-    # dummy loss
-    loss = out.sum()
+    result = net(x, disease_vec=dv)
+    # forward returns (seg_out, aux_logits) tuple during training
+    if isinstance(result, tuple):
+        seg_out, aux_logits = result
+        loss = seg_out.sum()
+        if aux_logits is not None:
+            loss = loss + torch.nn.functional.binary_cross_entropy_with_logits(aux_logits, dv)
+    else:
+        loss = result.sum()
     loss.backward()
 
     # check disease_mlp grads
@@ -158,6 +164,11 @@ def test_gradients():
         for name, param in inj.named_parameters():
             assert param.grad is not None, f"decoder_injectors[{i}].{name} has no grad"
             assert param.grad.abs().sum() > 0, f"decoder_injectors[{i}].{name} has zero grad"
+
+    # check disease_classifier grads
+    for name, param in net.disease_classifier.named_parameters():
+        assert param.grad is not None, f"disease_classifier.{name} has no grad"
+        assert param.grad.abs().sum() > 0, f"disease_classifier.{name} has zero grad"
 
     print("PASSED  (all disease modules have non-zero gradients)")
 

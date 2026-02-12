@@ -58,6 +58,10 @@ class nnUNetTrainerDA5DiseaseVec(nnUNetTrainerDA5):
         self.disease_K: int = 8
         self.disease_H: int = 64
         self.disease_E: int = 32
+        # disease components learn faster (multiplier on base LR)
+        self.disease_lr_multiplier: float = 10.0
+        # auxiliary disease classification loss weight
+        self.aux_disease_loss_weight: float = 0.1
         # populated in initialize()
         self.disease_map: Optional[Dict[str, List[int]]] = None
 
@@ -168,6 +172,62 @@ class nnUNetTrainerDA5DiseaseVec(nnUNetTrainerDA5):
         super().initialize()
         # load disease map (must happen after super because preprocessed_dataset_folder_base is needed)
         self.disease_map = self._load_disease_map()
+
+    # ------------------------------------------------------------------
+    # Optimizer: higher LR for disease components
+    # ------------------------------------------------------------------
+    def configure_optimizers(self):
+        disease_param_names = {'disease_mlp', 'bottleneck_injector', 'decoder_injectors', 'disease_classifier'}
+        disease_params = []
+        main_params = []
+        for name, param in self.network.named_parameters():
+            if any(name.startswith(prefix) or f'.{prefix}' in name
+                   for prefix in disease_param_names):
+                disease_params.append(param)
+            else:
+                main_params.append(param)
+
+        optimizer = torch.optim.SGD(
+            [
+                {'params': main_params},
+                {'params': disease_params, 'lr': self.initial_lr * self.disease_lr_multiplier},
+            ],
+            lr=self.initial_lr,
+            weight_decay=self.weight_decay,
+            momentum=0.99,
+            nesterov=True,
+        )
+        from nnunetv2.training.lr_scheduler.polylr import PolyLRScheduler
+        lr_scheduler = PolyLRScheduler(optimizer, self.initial_lr, self.num_epochs)
+        return optimizer, lr_scheduler
+
+    def on_train_epoch_start(self):
+        super().on_train_epoch_start()
+        if len(self.optimizer.param_groups) > 1:
+            self.optimizer.param_groups[1]['lr'] *= self.disease_lr_multiplier
+
+    # ------------------------------------------------------------------
+    # Gradient diagnostic logging (every 10 epochs)
+    # ------------------------------------------------------------------
+    def on_train_epoch_end(self, train_outputs):
+        super().on_train_epoch_end(train_outputs)
+        if self.current_epoch % 10 == 0:
+            mod = self._get_unwrapped_network()
+            disease_names = {'disease_mlp', 'bottleneck_injector', 'decoder_injectors', 'disease_classifier'}
+            disease_grad = 0.0
+            total_grad = 0.0
+            for name, param in mod.named_parameters():
+                if param.grad is not None:
+                    g = param.grad.norm().item()
+                    total_grad += g
+                    if any(name.startswith(prefix) for prefix in disease_names):
+                        disease_grad += g
+            if total_grad > 0:
+                pct = 100 * disease_grad / total_grad
+                self.print_to_log_file(
+                    f"[Grad diagnostic] Disease components: {disease_grad:.4f} / "
+                    f"Total: {total_grad:.2f} = {pct:.2f}%"
+                )
 
     # ------------------------------------------------------------------
     # on_train_start: copy disease_map.json to model output folder
@@ -388,8 +448,17 @@ class nnUNetTrainerDA5DiseaseVec(nnUNetTrainerDA5):
         self.optimizer.zero_grad(set_to_none=True)
 
         with autocast(self.device.type, enabled=True) if self.device.type == "cuda" else dummy_context():
-            output = self.network(data, disease_vec=disease_vec)
+            result = self.network(data, disease_vec=disease_vec)
+            if isinstance(result, tuple):
+                output, aux_logits = result
+            else:
+                output, aux_logits = result, None
             l = self.loss(output, target)
+            if aux_logits is not None and disease_vec is not None:
+                aux_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+                    aux_logits, disease_vec
+                )
+                l = l + self.aux_disease_loss_weight * aux_loss
 
         if self.grad_scaler is not None:
             self.grad_scaler.scale(l).backward()
