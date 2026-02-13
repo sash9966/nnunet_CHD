@@ -3,7 +3,9 @@ Disease-conditioned inference for nnU-Net v2.
 
 Automatically loads ``disease_map.json`` from the model folder (copied there
 during training) and sets the disease vector per case before prediction.
-Falls back to baseline if the disease map is not found or a case is missing.
+Uses a default all-zeros disease vector (not baseline!) when the disease map
+is missing or a case is not found — this keeps the conditioned path active
+since the decoder was trained with conditioning and expects modulated features.
 
 Usage::
 
@@ -103,8 +105,14 @@ def predict_disease_conditioned(
     mod = _get_unwrapped_network(predictor.network)
 
     if disease_map is None:
-        # no conditioning — just run standard predict
-        mod.clear_disease_vec()
+        # WARNING: Running baseline (clear_disease_vec) would skip conditioning
+        # entirely, but the decoder was trained WITH conditioning active.
+        # Use a default all-zeros disease vector to keep the conditioned path
+        # active while providing a neutral signal.
+        print("WARNING: No disease_map.json found. Using default disease vector [0]*8.")
+        print("If results are poor, provide a disease_map.json with --disease_json")
+        default_vec = torch.tensor([[0.0] * 8], dtype=torch.float32, device=dev)
+        mod.set_disease_vec(default_vec)
         predictor.predict_from_files(
             input_folder,
             output_folder,
@@ -112,6 +120,7 @@ def predict_disease_conditioned(
             num_processes_preprocessing=num_processes_preprocessing,
             num_processes_segmentation_export=num_processes_segmentation_export,
         )
+        mod.clear_disease_vec()
         return
 
     # --- disease-conditioned per-case prediction ---
@@ -129,6 +138,13 @@ def predict_disease_conditioned(
 
     os.makedirs(output_folder, exist_ok=True)
 
+    # Determine disease vector length from first entry
+    disease_K = len(next(iter(disease_map.values())))
+    # Default vector for unknown cases: all zeros (no disease flags set).
+    # IMPORTANT: We use the conditioned path with zeros instead of baseline,
+    # because the decoder was trained WITH conditioning and expects modulated features.
+    default_vec = [0] * disease_K
+
     for case_id, file_list in sorted(cases.items()):
         # set disease vec
         if case_id in disease_map:
@@ -136,8 +152,9 @@ def predict_disease_conditioned(
             mod.set_disease_vec(vec)
             print(f"\n{case_id}: disease_vec = {disease_map[case_id]}")
         else:
-            mod.clear_disease_vec()
-            print(f"\n{case_id}: NOT in disease_map, using baseline")
+            vec = torch.tensor([default_vec], dtype=torch.float32, device=dev)
+            mod.set_disease_vec(vec)
+            print(f"\n{case_id}: NOT in disease_map, using default vec = {default_vec}")
 
         # predict this case
         predictor.predict_from_files(
