@@ -150,6 +150,17 @@ def predict_disease_conditioned(
         print(f"  NOT in disease_map:     {len(unmatched)} — {unmatched}")
         print(f"  (These will use default all-zeros disease vector)")
 
+    if len(matched) == 0:
+        print("\n" + "=" * 70)
+        print("WARNING: ZERO cases matched the disease_map!")
+        print("This likely means case IDs extracted from filenames don't match the")
+        print("disease_map keys. Check naming conventions:")
+        print(f"  Input case IDs:    {case_ids[:5]}{'...' if len(case_ids) > 5 else ''}")
+        dm_keys = sorted(disease_map.keys())
+        print(f"  disease_map keys:  {dm_keys[:5]}{'...' if len(dm_keys) > 5 else ''}")
+        print("All cases will receive default all-zeros disease vector.")
+        print("=" * 70 + "\n")
+
     # Determine disease vector length from first entry
     disease_K = len(next(iter(disease_map.values())))
     # Default vector for unknown cases: all zeros (no disease flags set).
