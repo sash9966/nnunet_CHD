@@ -86,8 +86,10 @@ def predict_disease_conditioned(
             with open(auto_path) as f:
                 disease_map = json.load(f)
             print(f"Auto-detected disease map in model folder ({len(disease_map)} entries)")
+            print(f"  disease_map keys: {sorted(disease_map.keys())}")
         else:
-            print("No disease_map.json found. Running baseline inference (no conditioning).")
+            print(f"No disease_map.json found at {auto_path}")
+            print("Using default all-zeros disease vector for all cases.")
 
     # --- set up predictor ---
     dev = torch.device(device)
@@ -137,6 +139,16 @@ def predict_disease_conditioned(
         cases.setdefault(case_id, []).append(join(input_folder, f))
 
     os.makedirs(output_folder, exist_ok=True)
+
+    # Diagnostic: show case ID matching
+    case_ids = sorted(cases.keys())
+    matched = [c for c in case_ids if c in disease_map]
+    unmatched = [c for c in case_ids if c not in disease_map]
+    print(f"\nFound {len(case_ids)} cases in input folder.")
+    print(f"  Matched in disease_map: {len(matched)} — {matched}")
+    if unmatched:
+        print(f"  NOT in disease_map:     {len(unmatched)} — {unmatched}")
+        print(f"  (These will use default all-zeros disease vector)")
 
     # Determine disease vector length from first entry
     disease_K = len(next(iter(disease_map.values())))
