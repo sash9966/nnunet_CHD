@@ -1,5 +1,6 @@
 import matplotlib
 from batchgenerators.utilities.file_and_folder_operations import join
+import numpy as np
 
 matplotlib.use('agg')
 import seaborn as sns
@@ -26,6 +27,9 @@ class nnUNetLogger(object):
             'epoch_end_timestamps': list()
         }
         self.verbose = verbose
+        # Optional per-class plot configuration (set by trainers)
+        self.label_names = None       # list of str, e.g. ["LV", "RV", ...]
+        self.topo_class_ids = None    # list of int — highlighted with thicker lines
         # shut up, this logging is great
 
     def log(self, key, value, epoch: int):
@@ -55,7 +59,7 @@ class nnUNetLogger(object):
         # we infer the epoch form our internal logging
         epoch = min([len(i) for i in self.my_fantastic_logging.values()]) - 1  # lists of epoch 0 have len 1
         sns.set(font_scale=2.5)
-        fig, ax_all = plt.subplots(3, 1, figsize=(30, 54))
+        fig, ax_all = plt.subplots(4, 1, figsize=(30, 72))
         # regular progress.png as we are used to from previous nnU-Net versions
         ax = ax_all[0]
         ax2 = ax.twinx()
@@ -90,6 +94,43 @@ class nnUNetLogger(object):
         ax.set_xlabel("epoch")
         ax.set_ylabel("learning rate")
         ax.legend(loc=(0, 1))
+
+        # per-class validation Dice
+        ax = ax_all[3]
+        dice_data = self.my_fantastic_logging['dice_per_class_or_region'][:epoch + 1]
+        if len(dice_data) > 0 and dice_data[0] is not None:
+            num_classes = len(dice_data[0])
+            cmap = plt.cm.get_cmap('tab10', max(num_classes, 10))
+            for c in range(num_classes):
+                class_dice = []
+                for d in dice_data:
+                    if d is not None and c < len(d):
+                        v = d[c]
+                        class_dice.append(v if v is not None and not (isinstance(v, float) and np.isnan(v)) else float('nan'))
+                    else:
+                        class_dice.append(float('nan'))
+                # Label: use named labels if available, else generic
+                if self.label_names is not None and c < len(self.label_names):
+                    class_name = self.label_names[c]
+                else:
+                    class_name = f"Class {c + 1}"
+                # Highlight topology-relevant classes with thicker solid lines
+                if self.topo_class_ids is not None and c < num_classes:
+                    # topo_class_ids are label indices; foreground class c maps to label c+1
+                    # (background removed from dice_per_class_or_region)
+                    fg_label = c + 1  # offset because background is excluded
+                    is_topo = fg_label in self.topo_class_ids
+                else:
+                    is_topo = False
+                lw = 4 if is_topo else 1.5
+                ls = '-' if is_topo else '--'
+                ax.plot(x_values[:len(class_dice)], class_dice,
+                        color=cmap(c % 10), ls=ls, label=class_name, linewidth=lw)
+            ax.set_ylim([0, 1])
+            ax.legend(loc='lower right', fontsize=14, ncol=2)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel("pseudo Dice")
+        ax.set_title("Per-class validation pseudo Dice")
 
         plt.tight_layout()
 
