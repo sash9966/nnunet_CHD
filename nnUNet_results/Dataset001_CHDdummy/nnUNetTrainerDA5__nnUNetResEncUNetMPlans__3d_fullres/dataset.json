@@ -1,0 +1,17 @@
+{
+    "channel_names": {
+        "0": "CT"
+    },
+    "labels": {
+        "background": 0,
+        "LV": 1,
+        "RV": 2,
+        "LA": 3,
+        "RA": 4,
+        "Myo": 5,
+        "AO": 6,
+        "PA": 7
+    },
+    "numTraining": 5,
+    "file_ending": ".nii.gz"
+}

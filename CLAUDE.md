@@ -21,6 +21,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Keep upstream structure intact unless explicitly asked.
 - Avoid changing packaging/install unless required for the experiment.
 
+### Composability / Modularity
+- New training features (losses, conditioning methods, augmentations, schedules) MUST be implemented as **mixins** in `variants/mixins/`, using the `TrainerMixin` / `ComposableTrainerMixin` hook system — never as monolithic trainer subclasses.
+- Each mixin implements only `mixin_*` hooks and chains via `super()`. Do not override real nnUNetTrainer methods directly in a mixin; let `ComposableTrainerMixin` dispatch.
+- Concrete trainers in `variants/composed/` should be thin glue classes (~10-20 lines) that set class attributes and list mixins in the MRO. Always include a `_100epochs` variant.
+- When adding a new hook, add the no-op terminator to `TrainerMixin` first, then the dispatch call in `ComposableTrainerMixin`, then the implementation in the feature mixin.
+- Always assume any feature you build will be **stacked with other mixins**. Avoid side effects that conflict (e.g. hardcoded optimizer group indices). Use `super()` chaining, not replacement.
+- The existing monolithic trainers (`nnUNetTrainerDA5FiLM`, `nnUNetTrainerDA5DiseaseVec`, `nnUNetTrainerTopoLoss`) are kept for backward compatibility but should not be extended further.
+
 ## Project Overview
 
 This is a fork of **nnU-Net V2** (v2.6.3), a self-configuring deep learning framework for medical image segmentation. The branch `CHD_diseaseVector` is used for congenital heart disease (CHD) segmentation work. nnU-Net automatically analyzes datasets, configures U-Net architectures, and handles preprocessing/training/inference without manual tuning.
