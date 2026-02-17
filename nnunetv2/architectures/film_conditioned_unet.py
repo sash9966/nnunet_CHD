@@ -87,7 +87,7 @@ class FiLMConditionedResEncUNet(nn.Module):
     def __init__(
         self,
         base_network: nn.Module,
-        disease_K: int = 8,
+        disease_K: int = 32,
         disease_H: int = 64,
         disease_E: int = 32,
     ):

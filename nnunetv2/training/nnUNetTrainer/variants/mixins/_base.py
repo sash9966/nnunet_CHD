@@ -51,6 +51,13 @@ class TrainerMixin:
         """Return extra kwargs to pass to ``self.network(data, **extra)``."""
         return {}
 
+    def mixin_modify_target(self, target, batch: dict):
+        """Modify target labels before loss computation (training only).
+
+        Must return the (possibly modified) target.  Default: passthrough.
+        """
+        return target
+
     def mixin_extra_loss(self, output, target, batch: dict, **forward_kwargs) -> float:
         """Return an additional scalar loss term (0.0 = no extra loss)."""
         return 0.0
@@ -142,6 +149,9 @@ class ComposableTrainerMixin(TrainerMixin):
                 output, aux_logits = result
             else:
                 output, aux_logits = result, None
+
+            # let mixins modify targets before loss (e.g. disease-adaptive merging)
+            target = self.mixin_modify_target(target, batch)
 
             l = self.loss(output, target)
 

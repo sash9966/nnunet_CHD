@@ -83,7 +83,7 @@ class DiseaseConditionedResEncUNet(nn.Module):
         norm_op_kwargs: dict,
         nonlin: Type[nn.Module],
         nonlin_kwargs: dict,
-        disease_K: int = 8,
+        disease_K: int = 32,
         disease_H: int = 64,
         disease_E: int = 32,
     ):

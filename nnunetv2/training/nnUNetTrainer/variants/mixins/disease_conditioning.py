@@ -69,7 +69,7 @@ def build_disease_conditioned_network(
             self_or_arch_name, architecture_class_name, arch_init_kwargs,
             arch_init_kwargs_req_import, num_input_channels
         )
-        disease_K, disease_H, disease_E = 8, 64, 32
+        disease_K, disease_H, disease_E = 32, 64, 32
         trainer_instance = None
     else:
         trainer_instance = self_or_arch_name
@@ -146,7 +146,7 @@ class DiseaseConditioningMixin(TrainerMixin):
 
     def mixin_init(self):
         super().mixin_init()
-        self.disease_K: int = 8
+        self.disease_K: int = 32
         self.disease_H: int = 64
         self.disease_E: int = 32
         self.disease_lr_multiplier: float = 10.0
@@ -173,9 +173,21 @@ class DiseaseConditioningMixin(TrainerMixin):
         self.print_to_log_file(
             f"Loaded disease_map.json with {len(disease_map)} entries from {path}"
         )
+        padded = False
         for case_id, vec in disease_map.items():
-            assert isinstance(vec, list) and len(vec) == self.disease_K, (
-                f"disease_map entry for '{case_id}' has length {len(vec)}, expected {self.disease_K}"
+            assert isinstance(vec, list) and len(vec) <= self.disease_K, (
+                f"disease_map entry for '{case_id}' has length {len(vec)}, "
+                f"exceeds disease_K={self.disease_K}"
+            )
+            # Zero-pad shorter vectors (e.g. K=8 disease_map with K=32 model)
+            if len(vec) < self.disease_K:
+                original_len = len(vec)
+                disease_map[case_id] = vec + [0] * (self.disease_K - len(vec))
+                padded = True
+
+        if padded:
+            self.print_to_log_file(
+                f"disease_map.json vectors zero-padded from {original_len} to {self.disease_K}"
             )
         return disease_map
 
