@@ -113,4 +113,10 @@ ENV/
 
 *.model
 
-!documentation/assets/scribble_example.png
+!documentation/assets/scribble_example.png# nnU-Net data/results (never commit)
+nnUNet_raw/
+nnUNet_preprocessed/
+nnUNet_results/
+
+# macOS junk
+.DS_Store
