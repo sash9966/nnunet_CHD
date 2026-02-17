@@ -44,8 +44,8 @@ Instead of auto-resolving target classes and applying a uniform multiplier, you 
 
 ```python
 # Example: 8-class CHD dataset
-# background=1, LV=1, RV=1, LA=1, RA=1, AO=5, PA=5, WH=1
-self.curriculum_custom_weights = [1, 1, 1, 1, 1, 5, 5, 1]
+# background=1, LV=1, RV=1, LA=1, RA=1, Myo=1, AO=5, PA=5
+self.curriculum_custom_weights = [1, 1, 1, 1, 1, 1, 5, 5]
 ```
 
 When `curriculum_custom_weights` is set:
@@ -59,7 +59,7 @@ To use in a custom trainer subclass:
 class MyTrainer(CurriculumWeightsMixin, ComposableTrainerMixin, nnUNetTrainerDA5):
     def mixin_init(self):
         super().mixin_init()
-        self.curriculum_custom_weights = [1, 1, 1, 1, 1, 5, 5, 1]
+        self.curriculum_custom_weights = [1, 1, 1, 1, 1, 1, 5, 5]
 ```
 
 ### Schedule types

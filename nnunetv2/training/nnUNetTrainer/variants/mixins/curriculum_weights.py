@@ -130,7 +130,9 @@ class CurriculumWeightsMixin(TrainerMixin):
 
         num_classes = len(self.label_manager.all_labels)
 
-        # compute initial weights for epoch 0
+        # compute initial weights for epoch 0 — on the training device so
+        # the CE buffer is already on GPU before the first forward pass.
+        # (nnUNetTrainer moves the network but NOT self.loss to self.device.)
         initial_weights = get_curriculum_ce_weights(
             epoch=0,
             num_epochs=self.num_epochs,
@@ -140,7 +142,7 @@ class CurriculumWeightsMixin(TrainerMixin):
             fraction=self.curriculum_fraction,
             schedule_type=self.curriculum_schedule,
             custom_weights=self.curriculum_custom_weights,
-        )
+        ).to(self.device)
 
         loss = DC_and_CE_loss(
             {"batch_dice": self.configuration_manager.batch_dice,
@@ -200,7 +202,10 @@ class CurriculumWeightsMixin(TrainerMixin):
             schedule_type=self.curriculum_schedule,
             custom_weights=self.curriculum_custom_weights,
         )
-        ce_module.weight.copy_(new_weights.to(ce_module.weight.device))
+        # Use .data assignment so the buffer's device is updated (not just its
+        # values). copy_() keeps the buffer on its original device; if it was
+        # left on CPU this would silently leave weights on CPU → CUDA error.
+        ce_module.weight.data = new_weights.to(self.device)
 
         # log curriculum state
         T = math.ceil(self.curriculum_fraction * self.num_epochs)
