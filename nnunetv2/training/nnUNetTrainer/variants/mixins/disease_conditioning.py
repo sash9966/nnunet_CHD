@@ -121,6 +121,8 @@ def build_disease_conditioned_network(
         wrapped.bottleneck_injector.apply(wrapper_cls.initialize)
     if hasattr(wrapped, "decoder_injectors"):
         wrapped.decoder_injectors.apply(wrapper_cls.initialize)
+    # Note: SpatialGateLayer (bottleneck_gate, decoder_gates) has its own
+    # zero-init scheme in __init__ — do NOT apply He init to those modules.
 
     return wrapped
 
@@ -150,6 +152,7 @@ class DiseaseConditioningMixin(TrainerMixin):
         self.disease_lr_multiplier: float = 10.0
         self.aux_disease_loss_weight: float = 0.1
         self.disease_map: Optional[Dict[str, List[int]]] = None
+        self.disease_dropout_prob: float = 0.0  # classifier-free guidance dropout
 
     def mixin_initialize(self):
         super().mixin_initialize()
@@ -198,6 +201,13 @@ class DiseaseConditioningMixin(TrainerMixin):
     def mixin_prepare_forward(self, batch: dict) -> dict:
         kw = super().mixin_prepare_forward(batch)
         disease_vec = self._build_disease_vec(batch["keys"])
+        if disease_vec is not None:
+            # Classifier-free guidance dropout: randomly drop the disease
+            # vector during training so the model learns to *need* it.
+            if (self.disease_dropout_prob > 0
+                    and self.network.training
+                    and torch.rand(1).item() < self.disease_dropout_prob):
+                disease_vec = None
         if disease_vec is not None:
             kw["disease_vec"] = disease_vec
         return kw
