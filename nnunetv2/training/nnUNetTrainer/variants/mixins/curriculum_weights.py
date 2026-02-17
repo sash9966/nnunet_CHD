@@ -37,15 +37,18 @@ class CurriculumWeightsMixin(TrainerMixin):
 
     Configurable via class attributes or ``mixin_init`` overrides:
 
-    ==========================  ========  ======================================
-    Attribute                   Default   Meaning
-    ==========================  ========  ======================================
-    curriculum_enabled          True      Toggle the feature on/off
-    curriculum_fraction         0.20      Fraction of epochs with upweighting
-    curriculum_multiplier       3.0       CE weight multiplier for target classes
-    curriculum_schedule         "step"    "step" or "linear_decay"
-    curriculum_target_names     None      Custom label names; None = AO+PA auto
-    ==========================  ========  ======================================
+    ==============================  ========  ==========================================
+    Attribute                       Default   Meaning
+    ==============================  ========  ==========================================
+    curriculum_enabled              True      Toggle the feature on/off
+    curriculum_fraction             0.20      Fraction of epochs with upweighting
+    curriculum_multiplier           3.0       CE weight multiplier for target classes
+    curriculum_schedule             "step"    "step" or "linear_decay"
+    curriculum_target_names         None      Custom label names; None = AO+PA auto
+    curriculum_custom_weights       None      Explicit per-class weight list, e.g.
+                                              ``[1, 1, 1, 5, 5, 5, 1, 1]``.
+                                              Overrides target_ids + multiplier.
+    ==============================  ========  ==========================================
     """
 
     def mixin_init(self):
@@ -55,6 +58,7 @@ class CurriculumWeightsMixin(TrainerMixin):
         self.curriculum_multiplier: float = 3.0
         self.curriculum_schedule: str = "step"  # "step" or "linear_decay"
         self.curriculum_target_names: Optional[List[str]] = None
+        self.curriculum_custom_weights: Optional[List[float]] = None
         # resolved at mixin_initialize
         self._curriculum_target_ids: List[int] = []
         self._curriculum_label_names: List[str] = []
@@ -71,24 +75,46 @@ class CurriculumWeightsMixin(TrainerMixin):
             self.curriculum_enabled = False
             return
 
-        # resolve target class IDs
-        self._curriculum_target_ids = resolve_target_class_ids(
-            self.dataset_json,
-            target_names=self.curriculum_target_names,
-        )
-        # build label name list for logging
+        num_classes = len(self.label_manager.all_labels)
         labels = self.dataset_json.get("labels", {})
         id_to_name = {int(v): k for k, v in labels.items()}
-        self._curriculum_label_names = [
-            id_to_name.get(cid, f"class_{cid}") for cid in self._curriculum_target_ids
-        ]
-        self.print_to_log_file(
-            f"Curriculum CE weighting enabled: target classes = "
-            f"{list(zip(self._curriculum_label_names, self._curriculum_target_ids))}, "
-            f"multiplier = {self.curriculum_multiplier}, "
-            f"fraction = {self.curriculum_fraction}, "
-            f"schedule = {self.curriculum_schedule}"
-        )
+
+        if self.curriculum_custom_weights is not None:
+            # explicit per-class weights — validate length
+            if len(self.curriculum_custom_weights) != num_classes:
+                raise ValueError(
+                    f"curriculum_custom_weights has length {len(self.curriculum_custom_weights)}, "
+                    f"expected {num_classes} (number of classes including background)"
+                )
+            # identify which classes are upweighted for logging
+            self._curriculum_target_ids = [
+                i for i, w in enumerate(self.curriculum_custom_weights) if w > 1.0
+            ]
+            self._curriculum_label_names = [
+                id_to_name.get(cid, f"class_{cid}") for cid in self._curriculum_target_ids
+            ]
+            self.print_to_log_file(
+                f"Curriculum CE weighting enabled (custom weights): "
+                f"{self.curriculum_custom_weights}, "
+                f"fraction = {self.curriculum_fraction}, "
+                f"schedule = {self.curriculum_schedule}"
+            )
+        else:
+            # auto-resolve target class IDs from dataset.json
+            self._curriculum_target_ids = resolve_target_class_ids(
+                self.dataset_json,
+                target_names=self.curriculum_target_names,
+            )
+            self._curriculum_label_names = [
+                id_to_name.get(cid, f"class_{cid}") for cid in self._curriculum_target_ids
+            ]
+            self.print_to_log_file(
+                f"Curriculum CE weighting enabled: target classes = "
+                f"{list(zip(self._curriculum_label_names, self._curriculum_target_ids))}, "
+                f"multiplier = {self.curriculum_multiplier}, "
+                f"fraction = {self.curriculum_fraction}, "
+                f"schedule = {self.curriculum_schedule}"
+            )
 
     # ------------------------------------------------------------------
     # Override _build_loss to inject initial CE weight tensor
@@ -113,6 +139,7 @@ class CurriculumWeightsMixin(TrainerMixin):
             multiplier=self.curriculum_multiplier,
             fraction=self.curriculum_fraction,
             schedule_type=self.curriculum_schedule,
+            custom_weights=self.curriculum_custom_weights,
         )
 
         loss = DC_and_CE_loss(
@@ -171,15 +198,19 @@ class CurriculumWeightsMixin(TrainerMixin):
             multiplier=self.curriculum_multiplier,
             fraction=self.curriculum_fraction,
             schedule_type=self.curriculum_schedule,
+            custom_weights=self.curriculum_custom_weights,
         )
         ce_module.weight.copy_(new_weights.to(ce_module.weight.device))
 
         # log curriculum state
         T = math.ceil(self.curriculum_fraction * self.num_epochs)
         is_active = self.current_epoch < T
-        target_w = new_weights[self._curriculum_target_ids[0]].item() if self._curriculum_target_ids else 1.0
+        if self.curriculum_custom_weights is not None:
+            weights_str = f"weights={[f'{w:.2f}' for w in new_weights.tolist()]}"
+        else:
+            target_w = new_weights[self._curriculum_target_ids[0]].item() if self._curriculum_target_ids else 1.0
+            weights_str = f"target_weight={target_w:.2f}, classes={self._curriculum_label_names}"
         self.print_to_log_file(
             f"[Curriculum] epoch {self.current_epoch}/{self.num_epochs}: "
-            f"active={is_active}, target_weight={target_w:.2f}, "
-            f"classes={self._curriculum_label_names}"
+            f"active={is_active}, {weights_str}"
         )

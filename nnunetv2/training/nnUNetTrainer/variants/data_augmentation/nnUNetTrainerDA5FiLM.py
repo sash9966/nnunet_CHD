@@ -438,8 +438,10 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
     # ------------------------------------------------------------------
     def on_train_epoch_end(self, train_outputs):
         super().on_train_epoch_end(train_outputs)
+        mod = self._get_unwrapped_network()
+
+        # -- gradient diagnostics (every 10 epochs) --
         if self.current_epoch % 10 == 0:
-            mod = self._get_unwrapped_network()
             film_names = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
             film_grad = 0.0
             total_grad = 0.0
@@ -455,6 +457,22 @@ class nnUNetTrainerDA5FiLM(nnUNetTrainerDA5):
                     f"[Grad diagnostic] Disease components: {film_grad:.4f} / "
                     f"Total: {total_grad:.2f} = {pct:.2f}%"
                 )
+
+        # -- FiLM modulation magnitude logging (every epoch) --
+        if hasattr(mod, 'get_film_magnitudes'):
+            magnitudes = mod.get_film_magnitudes()
+            if magnitudes:
+                self.logger.log('film_magnitudes', magnitudes, self.current_epoch)
+                # text log every 10 epochs
+                if self.current_epoch % 10 == 0:
+                    parts = []
+                    for layer_name, vals in sorted(magnitudes.items()):
+                        parts.append(
+                            f"{layer_name}: |γ|={vals['gamma']:.4f} |β|={vals['beta']:.4f}"
+                        )
+                    self.print_to_log_file(
+                        f"[FiLM magnitudes] {', '.join(parts)}"
+                    )
 
     # ------------------------------------------------------------------
     # Validation step  (DA5 overrides this, so we override it here too)

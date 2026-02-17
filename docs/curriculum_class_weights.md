@@ -36,6 +36,31 @@ If no matching labels are found, a `ValueError` is raised at initialization with
 | `curriculum_multiplier` | `3.0` | CE weight multiplier for target classes |
 | `curriculum_schedule` | `"step"` | Schedule type: `"step"` or `"linear_decay"` |
 | `curriculum_target_names` | `None` | Custom label names to match; `None` = auto AO+PA |
+| `curriculum_custom_weights` | `None` | Explicit per-class weight list (see below) |
+
+### Custom per-class weights
+
+Instead of auto-resolving target classes and applying a uniform multiplier, you can pass an explicit weight vector where each position corresponds to a class index:
+
+```python
+# Example: 8-class CHD dataset
+# background=1, LV=1, RV=1, LA=1, RA=1, AO=5, PA=5, WH=1
+self.curriculum_custom_weights = [1, 1, 1, 1, 1, 5, 5, 1]
+```
+
+When `curriculum_custom_weights` is set:
+- The vector is used as-is as the "peak" weights during the curriculum phase (epoch < T)
+- After the curriculum fraction ends (epoch >= T), all weights revert to 1.0
+- The `multiplier` and `target_ids` parameters are ignored
+- Schedule types (`step` / `linear_decay`) still apply — `linear_decay` interpolates from your custom vector toward uniform
+
+To use in a custom trainer subclass:
+```python
+class MyTrainer(CurriculumWeightsMixin, ComposableTrainerMixin, nnUNetTrainerDA5):
+    def mixin_init(self):
+        super().mixin_init()
+        self.curriculum_custom_weights = [1, 1, 1, 1, 1, 5, 5, 1]
+```
 
 ### Schedule types
 

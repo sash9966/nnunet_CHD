@@ -36,6 +36,10 @@ class nnUNetLogger(object):
         """
         sometimes shit gets messed up. We try to catch that here
         """
+        # auto-create new logging keys (for mixin-injected diagnostics like FiLM magnitudes)
+        if key not in self.my_fantastic_logging:
+            self.my_fantastic_logging[key] = list()
+
         assert key in self.my_fantastic_logging.keys() and isinstance(self.my_fantastic_logging[key], list), \
             'This function is only intended to log stuff to lists and to have one entry per epoch'
 
@@ -55,11 +59,22 @@ class nnUNetLogger(object):
                 if len(self.my_fantastic_logging['ema_fg_dice']) > 0 else value
             self.log('ema_fg_dice', new_ema_pseudo_dice, epoch)
 
+    # core keys used for epoch inference (mixin-added keys excluded)
+    _CORE_KEYS = {'mean_fg_dice', 'ema_fg_dice', 'dice_per_class_or_region',
+                  'train_losses', 'val_losses', 'lrs',
+                  'epoch_start_timestamps', 'epoch_end_timestamps'}
+
     def plot_progress_png(self, output_folder):
-        # we infer the epoch form our internal logging
-        epoch = min([len(i) for i in self.my_fantastic_logging.values()]) - 1  # lists of epoch 0 have len 1
+        # we infer the epoch from core logging keys only (extra keys may be shorter)
+        core_lengths = [len(v) for k, v in self.my_fantastic_logging.items() if k in self._CORE_KEYS]
+        epoch = min(core_lengths) - 1 if core_lengths else 0  # lists of epoch 0 have len 1
+
+        has_film = ('film_magnitudes' in self.my_fantastic_logging
+                    and len(self.my_fantastic_logging['film_magnitudes']) > 0)
+        n_plots = 5 if has_film else 4
+
         sns.set(font_scale=2.5)
-        fig, ax_all = plt.subplots(4, 1, figsize=(30, 72))
+        fig, ax_all = plt.subplots(n_plots, 1, figsize=(30, 18 * n_plots))
         # regular progress.png as we are used to from previous nnU-Net versions
         ax = ax_all[0]
         ax2 = ax.twinx()
@@ -131,6 +146,37 @@ class nnUNetLogger(object):
         ax.set_xlabel("epoch")
         ax.set_ylabel("pseudo Dice")
         ax.set_title("Per-class validation pseudo Dice")
+
+        # FiLM modulation magnitude diagnostic (only for FiLM trainers)
+        if has_film:
+            ax = ax_all[4]
+            film_data = self.my_fantastic_logging['film_magnitudes']
+            film_epoch = min(len(film_data), epoch + 1)
+            film_x = list(range(film_epoch))
+
+            if film_epoch > 0:
+                # collect all layer names from the first entry
+                layer_names = sorted(film_data[0].keys())
+                cmap = plt.cm.get_cmap('tab10', max(len(layer_names) * 2, 10))
+                for li, layer_name in enumerate(layer_names):
+                    gammas = []
+                    betas = []
+                    for ep in range(film_epoch):
+                        entry = film_data[ep] if ep < len(film_data) else {}
+                        layer_data = entry.get(layer_name, {})
+                        gammas.append(layer_data.get("gamma", float('nan')))
+                        betas.append(layer_data.get("beta", float('nan')))
+                    color = cmap(li % 10)
+                    ax.plot(film_x, gammas, color=color, ls='-',
+                            label=f"|gamma| {layer_name}", linewidth=3)
+                    ax.plot(film_x, betas, color=color, ls='--',
+                            label=f"|beta| {layer_name}", linewidth=2)
+
+            ax.set_xlabel("epoch")
+            ax.set_ylabel("mean |value|")
+            ax.set_title("FiLM modulation magnitudes (should grow > 0.01 if conditioning is active)")
+            ax.legend(loc='upper left', fontsize=12, ncol=2)
+            ax.set_ylim(bottom=0)
 
         plt.tight_layout()
 

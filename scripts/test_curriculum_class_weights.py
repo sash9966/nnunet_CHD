@@ -120,6 +120,32 @@ def run_test(dataset_json: dict, num_epochs: int = 100, fraction: float = 0.2,
         assert torch.allclose(w, torch.ones(num_classes)), f"Weights at epoch T should all be 1.0 ({schedule})"
         print(f"  {schedule}: epoch={T}, weights=all 1.0  PASSED")
 
+    # 5. Test CUSTOM WEIGHTS mode
+    print(f"\n{'─' * 60}")
+    print("Custom weights: [1, 1, 1, 5, 5, 5, 1, 1]")
+    print(f"{'─' * 60}")
+    custom = [1.0, 1.0, 1.0, 5.0, 5.0, 5.0, 1.0, 1.0]
+    for schedule in ["step", "linear_decay"]:
+        # epoch 0: should use custom weights as peak
+        w0 = get_curriculum_ce_weights(0, num_epochs, num_classes, [], 1.0, fraction, schedule,
+                                        custom_weights=custom)
+        assert w0[3].item() == 5.0, f"custom epoch 0 class 3: expected 5.0, got {w0[3].item()}"
+        assert w0[0].item() == 1.0, f"custom epoch 0 class 0: expected 1.0, got {w0[0].item()}"
+        # epoch T: should be all uniform
+        wT = get_curriculum_ce_weights(T, num_epochs, num_classes, [], 1.0, fraction, schedule,
+                                        custom_weights=custom)
+        assert torch.allclose(wT, torch.ones(num_classes)), f"custom epoch T should be uniform ({schedule})"
+        print(f"  {schedule}: epoch 0 weights={[f'{x:.1f}' for x in w0.tolist()]}")
+        print(f"  {schedule}: epoch {T} weights=all 1.0  PASSED")
+
+    # linear_decay with custom: mid-schedule should interpolate
+    mid = T // 2
+    w_mid = get_curriculum_ce_weights(mid, num_epochs, num_classes, [], 1.0, fraction, "linear_decay",
+                                      custom_weights=custom)
+    assert 1.0 < w_mid[3].item() < 5.0, f"custom linear_decay mid-epoch class 3 should be between 1 and 5"
+    print(f"  linear_decay: epoch {mid} weights={[f'{x:.2f}' for x in w_mid.tolist()]}  (interpolated) PASSED")
+    print("  Custom weights: PASSED")
+
     print(f"\n{'=' * 60}")
     print("ALL TESTS PASSED")
     print(f"{'=' * 60}")

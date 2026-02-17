@@ -113,6 +113,7 @@ def get_curriculum_ce_weights(
     multiplier: float = 3.0,
     fraction: float = 0.2,
     schedule_type: str = "step",
+    custom_weights: Optional[List[float]] = None,
 ) -> torch.Tensor:
     """Compute a CE class-weight vector for the given epoch.
 
@@ -125,13 +126,20 @@ def get_curriculum_ce_weights(
     num_classes : int
         Number of classes (including background).
     target_ids : list of int
-        Class indices to upweight.
+        Class indices to upweight (ignored when ``custom_weights`` is set).
     multiplier : float
-        Weight multiplier for target classes during the curriculum phase.
+        Weight multiplier for target classes (ignored when ``custom_weights``
+        is set).
     fraction : float
         Fraction of total epochs during which curriculum weighting is active.
     schedule_type : str
         ``"step"`` or ``"linear_decay"``.
+    custom_weights : list of float, optional
+        Explicit per-class weight vector, e.g. ``[1, 1, 1, 5, 5, 5, 1, 1]``.
+        Length must equal ``num_classes``.  When provided, this vector is used
+        as the "peak" weights during the curriculum phase instead of the
+        auto-generated target_ids + multiplier approach.  After the curriculum
+        fraction ends, weights revert to uniform (all 1s).
 
     Returns
     -------
@@ -139,21 +147,29 @@ def get_curriculum_ce_weights(
         Shape ``(num_classes,)`` float32 weight vector.
     """
     T = math.ceil(fraction * num_epochs)
-    weights = torch.ones(num_classes, dtype=torch.float32)
+    uniform = torch.ones(num_classes, dtype=torch.float32)
 
     if epoch >= T or T == 0:
-        return weights
+        return uniform
+
+    # Determine peak weights: either from custom_weights or target_ids + multiplier
+    if custom_weights is not None:
+        if len(custom_weights) != num_classes:
+            raise ValueError(
+                f"custom_weights has length {len(custom_weights)}, expected {num_classes}"
+            )
+        peak = torch.tensor(custom_weights, dtype=torch.float32)
+    else:
+        peak = torch.ones(num_classes, dtype=torch.float32)
+        for cid in target_ids:
+            if cid < num_classes:
+                peak[cid] = multiplier
 
     if schedule_type == "step":
-        current_multiplier = multiplier
+        return peak
     elif schedule_type == "linear_decay":
-        # linear decay from multiplier to 1.0 over epochs [0, T)
-        current_multiplier = multiplier - (multiplier - 1.0) * (epoch / max(T - 1, 1))
+        # linear interpolation from peak to uniform over epochs [0, T)
+        t = epoch / max(T - 1, 1)
+        return peak + (uniform - peak) * t
     else:
         raise ValueError(f"Unknown schedule_type '{schedule_type}'. Use 'step' or 'linear_decay'.")
-
-    for cid in target_ids:
-        if cid < num_classes:
-            weights[cid] = current_multiplier
-
-    return weights

@@ -52,6 +52,11 @@ class FiLMLayer(nn.Module):
         """
         gamma = self.gamma_head(e)  # (B, C)
         beta = self.beta_head(e)  # (B, C)
+
+        # store magnitudes for diagnostics (detached, cheap)
+        self._last_gamma_abs_mean = gamma.detach().abs().mean().item()
+        self._last_beta_abs_mean = beta.detach().abs().mean().item()
+
         # broadcast to spatial dims
         shape = [x.shape[0], x.shape[1]] + [1] * (x.ndim - 2)
         gamma = gamma.view(*shape)
@@ -150,6 +155,38 @@ class FiLMConditionedResEncUNet(nn.Module):
     @staticmethod
     def initialize(module: nn.Module) -> None:
         InitWeights_He(1e-2)(module)
+
+    # ------------------------------------------------------------------
+    # FiLM magnitude diagnostics
+    # ------------------------------------------------------------------
+    def get_film_magnitudes(self) -> dict:
+        """Return last-seen |gamma| and |beta| mean per FiLM layer.
+
+        Returns a dict like::
+
+            {
+                "bottleneck": {"gamma": 0.012, "beta": 0.003},
+                "dec_0": {"gamma": 0.015, "beta": 0.005},
+                "dec_1": {"gamma": 0.008, "beta": 0.002},
+                ...
+            }
+
+        Values are floats (already detached).  Returns empty dict if no
+        forward pass has been made yet.
+        """
+        result = {}
+        if hasattr(self.bottleneck_film, '_last_gamma_abs_mean'):
+            result["bottleneck"] = {
+                "gamma": self.bottleneck_film._last_gamma_abs_mean,
+                "beta": self.bottleneck_film._last_beta_abs_mean,
+            }
+        for i, film in enumerate(self.decoder_films):
+            if hasattr(film, '_last_gamma_abs_mean'):
+                result[f"dec_{i}"] = {
+                    "gamma": film._last_gamma_abs_mean,
+                    "beta": film._last_beta_abs_mean,
+                }
+        return result
 
     # ------------------------------------------------------------------
     # Forward
