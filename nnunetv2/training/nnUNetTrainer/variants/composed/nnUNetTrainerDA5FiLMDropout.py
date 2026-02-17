@@ -17,7 +17,7 @@ class nnUNetTrainerDA5FiLMDropout(DiseaseConditioningMixin, ComposableTrainerMix
     to *need* the conditioning signal when available.
     """
     disease_wrapper_class = FiLMConditionedResEncUNet
-    disease_param_prefixes = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
+    disease_param_prefixes = {'disease_mlp', 'bottleneck_film'}
 
     def mixin_init(self):
         super().mixin_init()
@@ -32,3 +32,10 @@ class nnUNetTrainerDA5FiLMDropout_100epochs(nnUNetTrainerDA5FiLMDropout):
                  device: torch.device = torch.device("cuda")):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
+
+
+class nnUNetTrainerDA5FiLMDropout_500epochs(nnUNetTrainerDA5FiLMDropout):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device("cuda")):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 500

@@ -16,15 +16,15 @@ class nnUNetTrainerDA5FiLMTopoCurriculum(
     DiseaseConditioningMixin, TopologyLossMixin, CurriculumWeightsMixin,
     ComposableTrainerMixin, nnUNetTrainerDA5
 ):
-    """DA5 + FiLM conditioning + topology loss + curriculum CE weighting.
+    """DA5 + FiLM conditioning (bottleneck only) + topology loss + curriculum CE weighting.
 
     All three features compose cleanly:
-    - FiLM: network-level conditioning via disease_vec
+    - FiLM: bottleneck-only network conditioning via disease_vec
     - Topology: extra loss term (soft-clDice on AO/PA)
     - Curriculum: CE class weighting schedule (AO/PA upweighted early)
     """
     disease_wrapper_class = FiLMConditionedResEncUNet
-    disease_param_prefixes = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
+    disease_param_prefixes = {'disease_mlp', 'bottleneck_film'}
 
     def build_network_architecture(self, *a, **kw):
         return build_disease_conditioned_network(self, FiLMConditionedResEncUNet, *a, **kw)
@@ -35,3 +35,10 @@ class nnUNetTrainerDA5FiLMTopoCurriculum_100epochs(nnUNetTrainerDA5FiLMTopoCurri
                  device: torch.device = torch.device("cuda")):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
+
+
+class nnUNetTrainerDA5FiLMTopoCurriculum_500epochs(nnUNetTrainerDA5FiLMTopoCurriculum):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device("cuda")):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 500

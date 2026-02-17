@@ -146,11 +146,14 @@ class DiseaseConditioningMixin(TrainerMixin):
 
     def mixin_init(self):
         super().mixin_init()
-        self.disease_K: int = 32
+        self.disease_K: int = 8   # match disease_map.json (8 CHD flags)
         self.disease_H: int = 64
         self.disease_E: int = 32
-        self.disease_lr_multiplier: float = 10.0
-        self.aux_disease_loss_weight: float = 0.1
+        # 2× backbone LR — high enough for the small MLP/FiLM to adapt without
+        # causing the bottleneck scaling (1+γ) to overshoot. 10× was too
+        # aggressive: with SGD momentum 0.99, effective steps ≈ 10× × grad,
+        # driving γ away from zero and corrupting decoder features.
+        self.disease_lr_multiplier: float = 2.0
         self.disease_map: Optional[Dict[str, List[int]]] = None
         self.disease_dropout_prob: float = 0.0  # classifier-free guidance dropout
 
@@ -223,20 +226,6 @@ class DiseaseConditioningMixin(TrainerMixin):
         if disease_vec is not None:
             kw["disease_vec"] = disease_vec
         return kw
-
-    # ------------------------------------------------------------------
-    # Hook: extra loss (auxiliary disease classification)
-    # ------------------------------------------------------------------
-    def mixin_extra_loss(self, output, target, batch, **forward_kwargs) -> float:
-        extra = super().mixin_extra_loss(output, target, batch, **forward_kwargs)
-        aux_logits = forward_kwargs.get("aux_logits")
-        disease_vec = forward_kwargs.get("disease_vec")
-        if aux_logits is not None and disease_vec is not None:
-            aux_loss = torch.nn.functional.binary_cross_entropy_with_logits(
-                aux_logits, disease_vec
-            )
-            extra = extra + self.aux_disease_loss_weight * aux_loss
-        return extra
 
     # ------------------------------------------------------------------
     # Hook: extra optimizer param groups

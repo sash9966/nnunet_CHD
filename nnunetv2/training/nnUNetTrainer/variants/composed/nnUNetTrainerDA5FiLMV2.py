@@ -1,25 +1,17 @@
-"""Composable DA5 + FiLM disease-vector conditioning trainer."""
-import torch
+"""Backward-compatibility aliases for nnUNetTrainerDA5FiLMV2.
 
-from nnunetv2.architectures.film_conditioned_unet import FiLMConditionedResEncUNet
-from nnunetv2.training.nnUNetTrainer.variants.data_augmentation.nnUNetTrainerDA5 import nnUNetTrainerDA5
-from nnunetv2.training.nnUNetTrainer.variants.mixins._base import ComposableTrainerMixin
-from nnunetv2.training.nnUNetTrainer.variants.mixins.disease_conditioning import (
-    DiseaseConditioningMixin,
-    build_disease_conditioned_network,
+V2 has been superseded by V3 (bottleneck-only FiLM, no aux loss, K=8,
+disease_lr_multiplier=2.0).  These aliases ensure existing checkpoints that
+stored the V2 class name can still be loaded.
+"""
+from nnunetv2.training.nnUNetTrainer.variants.composed.nnUNetTrainerDA5FiLMV3 import (
+    nnUNetTrainerDA5FiLMV3 as nnUNetTrainerDA5FiLMV2,
+    nnUNetTrainerDA5FiLMV3_100epochs as nnUNetTrainerDA5FiLMV2_100epochs,
+    nnUNetTrainerDA5FiLMV3_500epochs as nnUNetTrainerDA5FiLMV2_500epochs,
 )
 
-
-class nnUNetTrainerDA5FiLMV2(DiseaseConditioningMixin, ComposableTrainerMixin, nnUNetTrainerDA5):
-    disease_wrapper_class = FiLMConditionedResEncUNet
-    disease_param_prefixes = {'disease_mlp', 'bottleneck_film', 'decoder_films', 'disease_classifier'}
-
-    def build_network_architecture(self, *a, **kw):
-        return build_disease_conditioned_network(self, FiLMConditionedResEncUNet, *a, **kw)
-
-
-class nnUNetTrainerDA5FiLMV2_100epochs(nnUNetTrainerDA5FiLMV2):
-    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
-                 device: torch.device = torch.device("cuda")):
-        super().__init__(plans, configuration, fold, dataset_json, device)
-        self.num_epochs = 100
+__all__ = [
+    "nnUNetTrainerDA5FiLMV2",
+    "nnUNetTrainerDA5FiLMV2_100epochs",
+    "nnUNetTrainerDA5FiLMV2_500epochs",
+]

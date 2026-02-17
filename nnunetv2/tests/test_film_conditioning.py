@@ -114,7 +114,7 @@ def test_forward_shapes_no_ds():
 # ---- test 2: gradient test ----
 
 def test_gradients_all_components():
-    print("Test 2: Gradient test (all components from first step) ... ", end="")
+    print("Test 2: Gradient test (bottleneck_film + disease_mlp from first step) ... ", end="")
     K = 8
     B = 2
     net = _make_network(ndim=3, disease_K=K, deep_supervision=False)
@@ -122,39 +122,22 @@ def test_gradients_all_components():
     x = torch.randn(B, 1, 32, 32, 32)
     dv = torch.randint(0, 2, (B, K)).float()
 
-    result = net(x, disease_vec=dv)
-    # forward returns (seg_output, aux_disease_logits) in training mode
-    if isinstance(result, tuple):
-        seg_out, aux_logits = result
-    else:
-        seg_out, aux_logits = result, None
+    # forward now always returns seg_output directly (no aux_logits tuple)
+    seg_out = net(x, disease_vec=dv)
+    seg_out.sum().backward()
 
-    loss = seg_out.sum()
-    if aux_logits is not None:
-        loss = loss + torch.nn.functional.binary_cross_entropy_with_logits(aux_logits, dv)
-    loss.backward()
-
-    # FiLM heads should receive gradients
+    # bottleneck FiLM heads should receive gradients immediately (small-random
+    # init ensures W≠0, so dL/dW = dL/dgamma @ e^T ≠ 0)
     for name, param in net.bottleneck_film.named_parameters():
         assert param.grad is not None, f"bottleneck_film.{name} has no grad"
         assert param.grad.abs().sum() > 0, f"bottleneck_film.{name} has zero grad"
 
-    for i, film in enumerate(net.decoder_films):
-        for name, param in film.named_parameters():
-            assert param.grad is not None, f"decoder_films[{i}].{name} has no grad"
-            assert param.grad.abs().sum() > 0, f"decoder_films[{i}].{name} has zero grad"
-
-    # disease_mlp gets gradients immediately (small-random init, W≠0)
+    # disease_mlp gets gradients through the bottleneck FiLM chain
     for name, param in net.disease_mlp.named_parameters():
         assert param.grad is not None, f"disease_mlp.{name} has no grad"
         assert param.grad.abs().sum() > 0, f"disease_mlp.{name} has zero grad"
 
-    # disease_classifier gets gradients from auxiliary loss
-    for name, param in net.disease_classifier.named_parameters():
-        assert param.grad is not None, f"disease_classifier.{name} has no grad"
-        assert param.grad.abs().sum() > 0, f"disease_classifier.{name} has zero grad"
-
-    print("PASSED  (all FiLM heads + disease_mlp + disease_classifier have non-zero gradients)")
+    print("PASSED  (bottleneck_film + disease_mlp have non-zero gradients)")
 
 
 # ---- test 3: set_disease_vec inference API ----
