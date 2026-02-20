@@ -62,9 +62,9 @@ class FiLMLayer(nn.Module):
         gamma = self.gamma_head(e)  # (B, C)
         beta = self.beta_head(e)    # (B, C)
 
-        # store magnitudes for diagnostics (detached, cheap)
-        self._last_gamma_abs_mean = gamma.detach().abs().mean().item()
-        self._last_beta_abs_mean = beta.detach().abs().mean().item()
+        # store magnitudes for diagnostics (tensor, no .item() to keep torch.compile happy)
+        self._last_gamma_abs_mean = gamma.detach().abs().mean()
+        self._last_beta_abs_mean = beta.detach().abs().mean()
 
         # broadcast to spatial dims
         shape = [x.shape[0], x.shape[1]] + [1] * (x.ndim - 2)
@@ -170,8 +170,8 @@ class FiLMConditionedResEncUNet(nn.Module):
         if hasattr(self.bottleneck_film, '_last_gamma_abs_mean'):
             return {
                 "bottleneck": {
-                    "gamma": self.bottleneck_film._last_gamma_abs_mean,
-                    "beta": self.bottleneck_film._last_beta_abs_mean,
+                    "gamma": self.bottleneck_film._last_gamma_abs_mean.item(),
+                    "beta": self.bottleneck_film._last_beta_abs_mean.item(),
                 }
             }
         return {}

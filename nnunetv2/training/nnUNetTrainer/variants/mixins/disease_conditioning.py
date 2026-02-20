@@ -69,7 +69,7 @@ def build_disease_conditioned_network(
             self_or_arch_name, architecture_class_name, arch_init_kwargs,
             arch_init_kwargs_req_import, num_input_channels
         )
-        disease_K, disease_H, disease_E = 32, 64, 32
+        disease_K, disease_H, disease_E = 8, 64, 32
         trainer_instance = None
     else:
         trainer_instance = self_or_arch_name
