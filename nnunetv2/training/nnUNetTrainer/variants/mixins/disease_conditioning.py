@@ -259,7 +259,7 @@ class DiseaseConditioningMixin(TrainerMixin):
             self.optimizer.param_groups[1]["lr"] *= self.disease_lr_multiplier
 
     # ------------------------------------------------------------------
-    # Hook: on_train_start (copy disease_map.json)
+    # Hook: on_train_start (copy disease_map.json + write inference_config)
     # ------------------------------------------------------------------
     def mixin_on_train_start(self):
         super().mixin_on_train_start()
@@ -268,6 +268,17 @@ class DiseaseConditioningMixin(TrainerMixin):
             dst = join(self.output_folder_base, "disease_map.json")
             shutil.copy2(src, dst)
             self.print_to_log_file(f"Copied disease_map.json to {dst}")
+
+        # Write inference_config.json so predict_disease_conditioned.py knows
+        # this model needs disease conditioning and what disease_K to expect.
+        config = {
+            "needs_disease_conditioning": True,
+            "disease_K": self.disease_K,
+        }
+        cfg_path = join(self.output_folder_base, "inference_config.json")
+        with open(cfg_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        self.print_to_log_file(f"Wrote inference_config.json to {cfg_path}")
 
     # ------------------------------------------------------------------
     # Hook: gradient diagnostics
