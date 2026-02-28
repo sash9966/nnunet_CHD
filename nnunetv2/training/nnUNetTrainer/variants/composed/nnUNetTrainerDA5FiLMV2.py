@@ -8,10 +8,12 @@ from nnunetv2.training.nnUNetTrainer.variants.composed.nnUNetTrainerDA5FiLMV3 im
     nnUNetTrainerDA5FiLMV3 as nnUNetTrainerDA5FiLMV2,
     nnUNetTrainerDA5FiLMV3_100epochs as nnUNetTrainerDA5FiLMV2_100epochs,
     nnUNetTrainerDA5FiLMV3_500epochs as nnUNetTrainerDA5FiLMV2_500epochs,
+    nnUNetTrainerDA5FiLMV3_1000epochs as nnUNetTrainerDA5FiLMV2_1000epochs,
 )
 
 __all__ = [
     "nnUNetTrainerDA5FiLMV2",
     "nnUNetTrainerDA5FiLMV2_100epochs",
     "nnUNetTrainerDA5FiLMV2_500epochs",
+    "nnUNetTrainerDA5FiLMV2_1000epochs",
 ]
