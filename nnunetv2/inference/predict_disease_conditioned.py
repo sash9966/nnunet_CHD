@@ -91,6 +91,7 @@ def predict_disease_conditioned(
     save_probabilities: bool = False,
     num_processes_preprocessing: int = 3,
     num_processes_segmentation_export: int = 3,
+    prev_stage_predictions: Optional[str] = None,
 ):
     """Run inference with automatic disease-vector conditioning.
 
@@ -134,11 +135,56 @@ def predict_disease_conditioned(
             print(f"No disease_map.json found at {auto_path}")
             print("Using default all-zeros disease vector for all cases.")
 
-    # Apply suffix normalisation to disease_map keys (e.g. strip '_image')
-    if disease_map and normalize_disease_map_suffix:
-        disease_map = _normalize_disease_map(disease_map, normalize_disease_map_suffix)
-        print(f"  disease_map keys (after stripping '{normalize_disease_map_suffix}'): "
-              f"{sorted(disease_map.keys())}")
+    # Apply suffix normalisation to disease_map keys (e.g. strip '_image').
+    # If no suffix was specified, auto-detect: try common suffixes and pick
+    # whichever one yields the most matches against the input filenames.
+    if disease_map:
+        if normalize_disease_map_suffix:
+            disease_map = _normalize_disease_map(disease_map, normalize_disease_map_suffix)
+            print(f"  disease_map keys (after stripping '{normalize_disease_map_suffix}'): "
+                  f"{sorted(disease_map.keys())}")
+        else:
+            # Quick pre-check: collect case IDs from the input folder so we can
+            # test suffix candidates before the full per-case loop below.
+            _input_files_early = sorted([
+                f for f in os.listdir(input_folder)
+                if f.endswith('.nii.gz') or f.endswith('.nii') or f.endswith('.mha')
+            ])
+            _early_case_ids = {_extract_case_id(f) for f in _input_files_early}
+            _dm_keys = set(disease_map.keys())
+            _direct_matches = len(_early_case_ids & _dm_keys)
+
+            if _direct_matches == 0 and _dm_keys and _early_case_ids:
+                # Try stripping candidate suffixes from disease_map keys.
+                # Collect all suffixes that appear on at least one key.
+                _candidates = set()
+                for k in _dm_keys:
+                    for sep in ('_', '-'):
+                        idx = k.rfind(sep)
+                        if idx > 0:
+                            _candidates.add(k[idx:])
+                # Also always try '_image' as it is the most common case.
+                _candidates.add('_image')
+
+                _best_suffix = ''
+                _best_count = 0
+                for _suffix in _candidates:
+                    _stripped = {
+                        (k[:-len(_suffix)] if k.endswith(_suffix) else k)
+                        for k in _dm_keys
+                    }
+                    _n = len(_early_case_ids & _stripped)
+                    if _n > _best_count:
+                        _best_count = _n
+                        _best_suffix = _suffix
+
+                if _best_count > 0:
+                    print(f"  Auto-detected disease_map key suffix '{_best_suffix}' "
+                          f"({_best_count}/{len(_early_case_ids)} cases matched). "
+                          f"Stripping it from keys.")
+                    disease_map = _normalize_disease_map(disease_map, _best_suffix)
+                    print(f"  disease_map keys (after auto-strip '{_best_suffix}'): "
+                          f"{sorted(disease_map.keys())[:5]}...")
 
     # --- set up predictor ---
     dev = torch.device(device)
@@ -173,6 +219,7 @@ def predict_disease_conditioned(
             save_probabilities=save_probabilities,
             num_processes_preprocessing=num_processes_preprocessing,
             num_processes_segmentation_export=num_processes_segmentation_export,
+            prev_stage_predictions=prev_stage_predictions,
         )
         print("\nDone.")
         return
@@ -191,6 +238,7 @@ def predict_disease_conditioned(
             save_probabilities=save_probabilities,
             num_processes_preprocessing=num_processes_preprocessing,
             num_processes_segmentation_export=num_processes_segmentation_export,
+            prev_stage_predictions=prev_stage_predictions,
         )
         mod.clear_disease_vec()
         print("\nDone.")
@@ -245,6 +293,15 @@ def predict_disease_conditioned(
             mod.set_disease_vec(vec)
             print(f"\n{case_id}: NOT in disease_map, using default vec = {default_vec}")
 
+        # For cascade fullres models, find the matching prev_stage file for this case.
+        case_prev = None
+        if prev_stage_predictions is not None:
+            for ext in ('.nii.gz', '.nii'):
+                candidate = join(prev_stage_predictions, case_id + ext)
+                if os.path.isfile(candidate):
+                    case_prev = [candidate]
+                    break
+
         predictor.predict_from_files(
             [sorted(file_list)],
             [join(output_folder, case_id)],
@@ -252,6 +309,7 @@ def predict_disease_conditioned(
             overwrite=True,
             num_processes_preprocessing=1,
             num_processes_segmentation_export=1,
+            prev_stage_predictions=case_prev,
         )
 
     mod.clear_disease_vec()
@@ -285,6 +343,8 @@ def main():
     parser.add_argument('--disable_tta', action='store_true',
                         help='Disable test-time augmentation (mirroring)')
     parser.add_argument('--save_probabilities', action='store_true')
+    parser.add_argument('--prev_stage_predictions', default=None, metavar='FOLDER',
+                        help='Folder containing low-res predictions for cascade fullres inference.')
 
     args = parser.parse_args()
 
@@ -298,6 +358,7 @@ def main():
         normalize_disease_map_suffix=args.normalize_disease_map_suffix,
         device=args.device,
         tile_step_size=args.step_size,
+        prev_stage_predictions=args.prev_stage_predictions,
         use_mirroring=not args.disable_tta,
         save_probabilities=args.save_probabilities,
     )
