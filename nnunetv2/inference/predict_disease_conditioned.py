@@ -15,6 +15,7 @@ Usage::
         -m /path/to/model_folder \\
         [-f 0] \\
         [--disease_json /path/to/disease_map.json]
+    [--prev_stage_predictions /path/to/lowres_predictions]
 """
 from __future__ import annotations
 
@@ -219,7 +220,7 @@ def predict_disease_conditioned(
             save_probabilities=save_probabilities,
             num_processes_preprocessing=num_processes_preprocessing,
             num_processes_segmentation_export=num_processes_segmentation_export,
-            prev_stage_predictions=prev_stage_predictions,
+            folder_with_segs_from_prev_stage=prev_stage_predictions,
         )
         print("\nDone.")
         return
@@ -238,7 +239,7 @@ def predict_disease_conditioned(
             save_probabilities=save_probabilities,
             num_processes_preprocessing=num_processes_preprocessing,
             num_processes_segmentation_export=num_processes_segmentation_export,
-            prev_stage_predictions=prev_stage_predictions,
+            folder_with_segs_from_prev_stage=prev_stage_predictions,
         )
         mod.clear_disease_vec()
         print("\nDone.")
@@ -293,15 +294,6 @@ def predict_disease_conditioned(
             mod.set_disease_vec(vec)
             print(f"\n{case_id}: NOT in disease_map, using default vec = {default_vec}")
 
-        # For cascade fullres models, find the matching prev_stage file for this case.
-        case_prev = None
-        if prev_stage_predictions is not None:
-            for ext in ('.nii.gz', '.nii'):
-                candidate = join(prev_stage_predictions, case_id + ext)
-                if os.path.isfile(candidate):
-                    case_prev = [candidate]
-                    break
-
         predictor.predict_from_files(
             [sorted(file_list)],
             [join(output_folder, case_id)],
@@ -309,7 +301,7 @@ def predict_disease_conditioned(
             overwrite=True,
             num_processes_preprocessing=1,
             num_processes_segmentation_export=1,
-            prev_stage_predictions=case_prev,
+            folder_with_segs_from_prev_stage=prev_stage_predictions,
         )
 
     mod.clear_disease_vec()

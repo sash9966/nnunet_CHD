@@ -63,6 +63,7 @@ def setup_fold(
     fold: int,
     dry_run: bool,
 ) -> None:
+    # Where the lowres trainer wrote its validation predictions (.b2nd files).
     lowres_val = (
         results_dir
         / dataset
@@ -70,24 +71,28 @@ def setup_fold(
         / f'fold_{fold}'
         / 'validation'
     )
+
+    # Where nnU-Net's cascade fullres trainer looks for the prev-stage predictions.
+    # It resolves: {CASCADE_TRAINER}__{plans}__3d_lowres/predicted_next_stage/3d_cascade_fullres/
+    # (note: 3d_lowres subfolder under the CASCADE trainer name, not the lowres trainer name)
     cascade_target = (
         results_dir
         / dataset
-        / f'{cascade_trainer}__{plans}__3d_cascade_fullres'
-        / f'fold_{fold}'
+        / f'{cascade_trainer}__{plans}__3d_lowres'
         / 'predicted_next_stage'
+        / '3d_cascade_fullres'
     )
 
     if not lowres_val.exists():
         print(f'  [WARN] fold_{fold}: lowres validation folder not found — skipping')
         print(f'         Expected: {lowres_val}')
-        print(f'         Run nnUNetv2_predict on 3d_lowres first.')
+        print(f'         Run nnUNetv2_train with --npz on 3d_lowres first.')
         return
 
     if cascade_target.exists():
         if cascade_target.is_symlink():
-            existing_target = Path(os.readlink(cascade_target))
-            if existing_target == lowres_val:
+            existing_target = Path(os.readlink(cascade_target)).resolve()
+            if existing_target == lowres_val.resolve():
                 print(f'  fold_{fold}: symlink already correct — skipping')
                 return
             print(f'  fold_{fold}: removing stale symlink → {existing_target}')

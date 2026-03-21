@@ -189,7 +189,12 @@ class nnUNetDatasetBlosc2(nnUNetBaseDataset):
             chunks_seg=None,
             blocks_seg=None
     ):
-        blosc2.asarray(seg, urlpath=output_filename_truncated + '.b2nd', chunks=chunks_seg, blocks=blocks_seg)
+        try:
+            blosc2.asarray(seg, urlpath=output_filename_truncated + '.b2nd', chunks=chunks_seg, blocks=blocks_seg)
+        except RuntimeError:
+            # Explicit chunks/blocks can fail when the array shape is smaller than the chunk
+            # (e.g. a single-label validation crop).  Retry letting blosc2 pick its own params.
+            blosc2.asarray(seg, urlpath=output_filename_truncated + '.b2nd')
 
     @staticmethod
     def get_identifiers(folder: str) -> List[str]:
