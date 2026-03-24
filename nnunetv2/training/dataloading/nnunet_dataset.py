@@ -183,18 +183,32 @@ class nnUNetDatasetBlosc2(nnUNetBaseDataset):
         write_pickle(properties, output_filename_truncated + '.pkl')
 
     @staticmethod
+    def _remove_b2nd(path: str) -> None:
+        """Remove a .b2nd file or directory left by a failed blosc2 write."""
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        elif os.path.exists(path):
+            os.remove(path)
+
+    @staticmethod
     def save_seg(
             seg: np.ndarray,
             output_filename_truncated: str,
             chunks_seg=None,
             blocks_seg=None
     ):
+        blosc2.set_nthreads(1)
+        seg = np.ascontiguousarray(seg)
+        path = output_filename_truncated + '.b2nd'
+        # Remove any partial file left by a previous failed attempt before writing.
+        nnUNetDatasetBlosc2._remove_b2nd(path)
         try:
-            blosc2.asarray(seg, urlpath=output_filename_truncated + '.b2nd', chunks=chunks_seg, blocks=blocks_seg)
-        except RuntimeError:
-            # Explicit chunks/blocks can fail when the array shape is smaller than the chunk
-            # (e.g. a single-label validation crop).  Retry letting blosc2 pick its own params.
-            blosc2.asarray(seg, urlpath=output_filename_truncated + '.b2nd')
+            blosc2.asarray(seg, urlpath=path, chunks=chunks_seg, blocks=blocks_seg)
+        except RuntimeError as e:
+            # chunks/blocks incompatible with array shape — clean up and retry with auto params.
+            print(f'[save_seg] retry without chunks/blocks (shape={seg.shape} dtype={seg.dtype}): {e}')
+            nnUNetDatasetBlosc2._remove_b2nd(path)
+            blosc2.asarray(seg, urlpath=path)
 
     @staticmethod
     def get_identifiers(folder: str) -> List[str]:
