@@ -320,7 +320,11 @@ class ComposableTrainerMixin(TrainerMixin):
                                         self.dataset_json, self.__class__.__name__,
                                         self.inference_allowed_mirroring_axes)
 
-        with multiprocessing.get_context("spawn").Pool(default_num_processes) as segmentation_export_pool:
+        def _init_worker():
+            import blosc2
+            blosc2.set_nthreads(1)
+
+        with multiprocessing.get_context("spawn").Pool(default_num_processes, initializer=_init_worker) as segmentation_export_pool:
             worker_list = [i for i in segmentation_export_pool._pool]
             validation_output_folder = join(self.output_folder, 'validation')
             maybe_mkdir_p(validation_output_folder)

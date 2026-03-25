@@ -63,18 +63,19 @@ def setup_fold(
     fold: int,
     dry_run: bool,
 ) -> None:
-    # Where the lowres trainer wrote its validation predictions (.b2nd files).
-    lowres_val = (
+    # Where the lowres trainer wrote its predicted_next_stage .b2nd files during validation.
+    # nnU-Net writes these to {trainer}__plans__3d_lowres/predicted_next_stage/3d_cascade_fullres/
+    # (at the trainer level, NOT inside fold_X/)
+    lowres_next_stage = (
         results_dir
         / dataset
         / f'{lowres_trainer}__{plans}__3d_lowres'
-        / f'fold_{fold}'
-        / 'validation'
+        / 'predicted_next_stage'
+        / '3d_cascade_fullres'
     )
 
-    # Where nnU-Net's cascade fullres trainer looks for the prev-stage predictions.
-    # It resolves: {CASCADE_TRAINER}__{plans}__3d_lowres/predicted_next_stage/3d_cascade_fullres/
-    # (note: 3d_lowres subfolder under the CASCADE trainer name, not the lowres trainer name)
+    # Where the cascade fullres trainer looks for prev-stage predictions — same path structure
+    # but under the CASCADE trainer's name (different trainer class → different folder).
     cascade_target = (
         results_dir
         / dataset
@@ -83,16 +84,16 @@ def setup_fold(
         / '3d_cascade_fullres'
     )
 
-    if not lowres_val.exists():
-        print(f'  [WARN] fold_{fold}: lowres validation folder not found — skipping')
-        print(f'         Expected: {lowres_val}')
-        print(f'         Run nnUNetv2_train with --npz on 3d_lowres first.')
+    if not lowres_next_stage.exists():
+        print(f'  [WARN] fold_{fold}: lowres predicted_next_stage folder not found — skipping')
+        print(f'         Expected: {lowres_next_stage}')
+        print(f'         Run nnUNetv2_train on 3d_lowres first (it writes this during validation).')
         return
 
     if cascade_target.exists():
         if cascade_target.is_symlink():
             existing_target = Path(os.readlink(cascade_target)).resolve()
-            if existing_target == lowres_val.resolve():
+            if existing_target == lowres_next_stage.resolve():
                 print(f'  fold_{fold}: symlink already correct — skipping')
                 return
             print(f'  fold_{fold}: removing stale symlink → {existing_target}')
@@ -104,12 +105,12 @@ def setup_fold(
             return
 
     print(f'  fold_{fold}:')
-    print(f'    src : {lowres_val}')
+    print(f'    src : {lowres_next_stage}')
     print(f'    link: {cascade_target}')
 
     if not dry_run:
         cascade_target.parent.mkdir(parents=True, exist_ok=True)
-        cascade_target.symlink_to(lowres_val.resolve())
+        cascade_target.symlink_to(lowres_next_stage.resolve())
         print(f'    → symlink created')
     else:
         print(f'    → [DRY RUN] would create symlink')
