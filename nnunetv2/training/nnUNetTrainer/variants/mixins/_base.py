@@ -27,6 +27,12 @@ from torch._dynamo import OptimizedModule
 from nnunetv2.utilities.helpers import dummy_context
 
 
+def _blosc2_init_worker():
+    """Module-level pool initializer so it can be pickled by spawn context."""
+    import blosc2
+    blosc2.set_nthreads(1)
+
+
 # =========================================================================
 # TrainerMixin — no-op hook terminators
 # =========================================================================
@@ -320,11 +326,7 @@ class ComposableTrainerMixin(TrainerMixin):
                                         self.dataset_json, self.__class__.__name__,
                                         self.inference_allowed_mirroring_axes)
 
-        def _init_worker():
-            import blosc2
-            blosc2.set_nthreads(1)
-
-        with multiprocessing.get_context("spawn").Pool(default_num_processes, initializer=_init_worker) as segmentation_export_pool:
+        with multiprocessing.get_context("spawn").Pool(default_num_processes, initializer=_blosc2_init_worker) as segmentation_export_pool:
             worker_list = [i for i in segmentation_export_pool._pool]
             validation_output_folder = join(self.output_folder, 'validation')
             maybe_mkdir_p(validation_output_folder)

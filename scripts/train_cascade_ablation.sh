@@ -27,7 +27,6 @@ hash -r
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
-export PYTHONPATH="/scratch/users/sastocke/nnunet_CHD:${PYTHONPATH}"
 export nnUNet_n_proc_DA=0   # fix for dataloader issue
 
 REPO="/scratch/users/sastocke/nnunet_CHD"
