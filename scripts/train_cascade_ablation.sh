@@ -57,7 +57,8 @@ echo "=== PREPROCESSING ==="
 nnUNetv2_preprocess \
     -d ${DATASET_ID} \
     -plans_name ${PLANS} \
-    -c ${LOWRES_CONFIG} ${CASCADE_CONFIG}
+    -c ${LOWRES_CONFIG} ${CASCADE_CONFIG} \
+    -n 4 2
 
 # -------------------------
 # Lowres trainer → Cascade fullres trainer mapping
