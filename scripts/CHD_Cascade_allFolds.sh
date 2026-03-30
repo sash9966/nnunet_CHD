@@ -6,7 +6,7 @@ set -euo pipefail   # abort immediately on any error; treat unset vars as errors
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64GB
+#SBATCH --mem=64G
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
@@ -27,7 +27,6 @@ hash -r
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
-export PYTHONPATH="/scratch/users/sastocke/nnunet_CHD:${PYTHONPATH}"
 export nnUNet_n_proc_DA=0   # fix for dataloader issue
 
 REPO="/scratch/users/sastocke/nnunet_CHD"
@@ -59,7 +58,8 @@ echo "=== PREPROCESSING ==="
 nnUNetv2_preprocess \
     -d ${DATASET_ID} \
     -plans_name ${PLANS} \
-    -c ${LOWRES_CONFIG} ${CASCADE_CONFIG}
+    -c ${LOWRES_CONFIG} ${CASCADE_CONFIG} \
+    -n 4 2
 
 # -------------------------
 # Trainer pairing
