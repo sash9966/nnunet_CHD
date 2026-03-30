@@ -6,7 +6,7 @@ set -euo pipefail   # abort immediately on any error; treat unset vars as errors
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
@@ -28,7 +28,6 @@ export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
 export nnUNet_n_proc_DA=0   # fix for dataloader issue
-
 REPO="/scratch/users/sastocke/nnunet_CHD"
 
 echo "=== ENV SANITY ==="
@@ -47,8 +46,9 @@ PLANS="nnUNetResEncUNetMPlans"
 
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
 
-# Fold 0 only for the initial comparison run
-FOLD=0
+# All 5 folds for training; fold 0 only for test-set prediction
+TRAIN_FOLDS=(0 1 2 3 4)
+PRED_FOLD=0   # fold used for single-fold test-set predictions
 
 # -------------------------
 # Preprocess both configs (safe to re-run; skips if already done)
@@ -61,10 +61,7 @@ nnUNetv2_preprocess \
     -n 4 2
 
 # -------------------------
-# Lowres trainer → Cascade fullres trainer mapping
-#
-# Each pair writes to a unique results folder so all four ablations
-# can be compared side-by-side without overwriting each other.
+# Trainer pairing
 #
 #   Baseline  : plain DA5 lowres         → CascadeFullresBaseline
 #   FiLM      : DA5 + FiLM lowres        → CascadeFullresFiLM       (FiLM retained at high-res)
@@ -87,100 +84,151 @@ LOWRES_TRAINERS=(
 echo "=== CONFIG ==="
 echo "DATASET=${DATASET_NAME} (id=${DATASET_ID})"
 echo "PLANS=${PLANS}"
-echo "FOLD=${FOLD}"
+echo "TRAIN_FOLDS=${TRAIN_FOLDS[*]}"
+echo "PRED_FOLD=${PRED_FOLD}"
 echo "LOWRES_TRAINERS=${LOWRES_TRAINERS[*]}"
 
-# Output layout:
-#   predictions/
-#     {LR_TRAINER}/imagesTs/fold_0/        ← lowres test predictions
-#     {CASCADE_TRAINER}/imagesTs/fold_0/   ← cascade test predictions
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 mkdir -p "${PRED_BASE}"
 
-# -------------------------
-# Main Training & Inference Loop
-# -------------------------
+# ================================================================
+# PHASE 1 — Train ALL low-res trainers on ALL folds
+#
+# WHY: The cascade-fullres trainer for fold N uses lowres soft
+# predictions as a spatial prior for its *training* cases, which
+# are the validation cases of all OTHER folds.  Every fold must be
+# trained before any cascade-fullres fold can start.
+# The --npz flag saves soft predictions to
+#   {trainer}__{plans}__3d_lowres/predicted_next_stage/3d_cascade_fullres/
+# which the cascade trainer reads at the start of each training run.
+# ================================================================
+echo ""
+echo "================================================================"
+echo "PHASE 1 — Low-Res Training: ALL trainers x ALL folds"
+echo "================================================================"
+
+for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
+  for FOLD in "${TRAIN_FOLDS[@]}"; do
+    echo ""
+    echo "--- LowRes: ${LR_TRAINER} | fold ${FOLD} ---"
+    nnUNetv2_train \
+      ${DATASET_ID} \
+      ${LOWRES_CONFIG} \
+      ${FOLD} \
+      -tr ${LR_TRAINER} \
+      -p ${PLANS} \
+      --npz
+  done
+done
+
+# ================================================================
+# PHASE 2 — Symlink lowres priors into cascade trainer directories
+#
+# When lowres and cascade trainers have different class names nnU-Net
+# cannot auto-locate the predicted_next_stage folder.  This script
+# creates a symlink from the cascade trainer's expected location to
+# where the lowres trainer actually wrote its predictions.
+# Must run after ALL lowres folds complete so the folder exists.
+# ================================================================
+echo ""
+echo "================================================================"
+echo "PHASE 2 — Symlink lowres priors for cascade trainers"
+echo "================================================================"
+
 for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
   CASCADE_TRAINER="${CASCADE_TRAINER_MAP[$LR_TRAINER]}"
+  echo ""
+  echo "--- Symlinking: ${LR_TRAINER} → ${CASCADE_TRAINER} ---"
+  python "${REPO}/scripts/setup_cascade_predictions.py" \
+    --lowres_trainer  "${LR_TRAINER}" \
+    --cascade_trainer "${CASCADE_TRAINER}" \
+    --dataset         "${DATASET_NAME}" \
+    --plans           "${PLANS}" \
+    --folds           "${TRAIN_FOLDS[@]}"
+done
 
-  echo "================================================================"
-  echo "PIPELINE: LowRes (${LR_TRAINER}) -> Cascade (${CASCADE_TRAINER})"
-  echo "================================================================"
+# ================================================================
+# PHASE 3 — Train ALL cascade-fullres trainers on ALL folds
+#
+# Each cascade trainer reads the symlinked lowres predictions for
+# the training cases of each fold.  With all 5 lowres folds done,
+# every training case now has a lowres prior available.
+# ================================================================
+echo ""
+echo "================================================================"
+echo "PHASE 3 — Cascade High-Res Training: ALL trainers x ALL folds"
+echo "================================================================"
+
+for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
+  CASCADE_TRAINER="${CASCADE_TRAINER_MAP[$LR_TRAINER]}"
+  for FOLD in "${TRAIN_FOLDS[@]}"; do
+    echo ""
+    echo "--- CascadeFullres: ${CASCADE_TRAINER} | fold ${FOLD} ---"
+    nnUNetv2_train \
+      ${DATASET_ID} \
+      ${CASCADE_CONFIG} \
+      ${FOLD} \
+      -tr ${CASCADE_TRAINER} \
+      -p ${PLANS} \
+      --npz
+  done
+done
+
+# ================================================================
+# PHASE 4 — Test-set inference (lowres then cascade, per trainer)
+#
+# Uses fold PRED_FOLD only.  The cascade prediction step requires
+# the lowres predictions as --prev_stage_predictions.
+# FiLM trainers use predict_disease_conditioned (reads disease_map.json
+# from the model folder and injects the disease vector at inference).
+# ================================================================
+echo ""
+echo "================================================================"
+echo "PHASE 4 — Test-set predictions (fold ${PRED_FOLD})"
+echo "================================================================"
+
+for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
+  CASCADE_TRAINER="${CASCADE_TRAINER_MAP[$LR_TRAINER]}"
 
   LR_MODEL_BASE="${nnUNet_results}/${DATASET_NAME}/${LR_TRAINER}__${PLANS}__${LOWRES_CONFIG}"
   CASC_MODEL_BASE="${nnUNet_results}/${DATASET_NAME}/${CASCADE_TRAINER}__${PLANS}__${CASCADE_CONFIG}"
 
-  # Prediction output folders — trainer name first for easy comparison
-  LR_PRED_DIR="${PRED_BASE}/${LR_TRAINER}/imagesTs/fold_${FOLD}"
-  CASC_PRED_DIR="${PRED_BASE}/${CASCADE_TRAINER}/imagesTs/fold_${FOLD}"
+  LR_PRED_DIR="${PRED_BASE}/${LR_TRAINER}/imagesTs/fold_${PRED_FOLD}"
+  CASC_PRED_DIR="${PRED_BASE}/${CASCADE_TRAINER}/imagesTs/fold_${PRED_FOLD}"
+
+  mkdir -p "${LR_PRED_DIR}" "${CASC_PRED_DIR}"
 
   # -------------------------------------------------------
-  echo "FOLD ${FOLD}: 1. Low-Res Training (${LR_TRAINER})"
+  echo ""
+  echo "--- Lowres predict: ${LR_TRAINER} | fold ${PRED_FOLD} ---"
   # -------------------------------------------------------
-  nnUNetv2_train \
-    ${DATASET_ID} \
-    ${LOWRES_CONFIG} \
-    ${FOLD} \
-    -tr ${LR_TRAINER} \
-    -p ${PLANS} \
-    --npz
-
-  # -------------------------------------------------------
-  echo "FOLD ${FOLD}: 2. Low-Res Prediction on Test Set"
-  # -------------------------------------------------------
-  mkdir -p "${LR_PRED_DIR}"
-
   if [[ "${LR_TRAINER}" == *"FiLM"* ]]; then
     python -m nnunetv2.inference.predict_disease_conditioned \
       -i "${IN_DIR}" \
       -o "${LR_PRED_DIR}" \
       -m "${LR_MODEL_BASE}" \
-      -f ${FOLD}
+      -f ${PRED_FOLD}
   else
     nnUNetv2_predict \
       -i "${IN_DIR}" \
       -o "${LR_PRED_DIR}" \
       -d ${DATASET_ID} \
       -c ${LOWRES_CONFIG} \
-      -f ${FOLD} \
+      -f ${PRED_FOLD} \
       -tr ${LR_TRAINER} \
       -p ${PLANS}
   fi
 
   # -------------------------------------------------------
-  echo "FOLD ${FOLD}: 3. Symlinking Lowres Priors for Cascade Training"
+  echo ""
+  echo "--- Cascade predict: ${CASCADE_TRAINER} | fold ${PRED_FOLD} ---"
   # -------------------------------------------------------
-  # Symlinks fold_0/validation/ (written by --npz during step 1) into the
-  # cascade trainer folder so it can use them as spatial priors during training.
-  python "${REPO}/scripts/setup_cascade_predictions.py" \
-    --lowres_trainer "${LR_TRAINER}" \
-    --cascade_trainer "${CASCADE_TRAINER}" \
-    --dataset "${DATASET_NAME}" \
-    --plans "${PLANS}" \
-    --folds ${FOLD}
-
-  # -------------------------------------------------------
-  echo "FOLD ${FOLD}: 4. Cascade High-Res Training (${CASCADE_TRAINER})"
-  # -------------------------------------------------------
-  nnUNetv2_train \
-    ${DATASET_ID} \
-    ${CASCADE_CONFIG} \
-    ${FOLD} \
-    -tr ${CASCADE_TRAINER} \
-    -p ${PLANS} \
-    --npz
-
-  # -------------------------------------------------------
-  echo "FOLD ${FOLD}: 5. Cascade High-Res Prediction on Test Set"
-  # -------------------------------------------------------
-  mkdir -p "${CASC_PRED_DIR}"
-
   if [[ "${CASCADE_TRAINER}" == *"FiLM"* ]]; then
     python -m nnunetv2.inference.predict_disease_conditioned \
       -i "${IN_DIR}" \
       -o "${CASC_PRED_DIR}" \
       -m "${CASC_MODEL_BASE}" \
-      -f ${FOLD} \
+      -f ${PRED_FOLD} \
       --prev_stage_predictions "${LR_PRED_DIR}"
   else
     nnUNetv2_predict \
@@ -188,7 +236,7 @@ for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
       -o "${CASC_PRED_DIR}" \
       -d ${DATASET_ID} \
       -c ${CASCADE_CONFIG} \
-      -f ${FOLD} \
+      -f ${PRED_FOLD} \
       -tr ${CASCADE_TRAINER} \
       -p ${PLANS} \
       -prev_stage_predictions "${LR_PRED_DIR}"
@@ -197,11 +245,13 @@ for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
 done
 
 echo ""
+echo "================================================================"
 echo "PIPELINE COMPLETE."
+echo "================================================================"
 echo ""
-echo "Prediction folders:"
+echo "Prediction folders (fold ${PRED_FOLD}):"
 for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
   CASCADE_TRAINER="${CASCADE_TRAINER_MAP[$LR_TRAINER]}"
-  echo "  lowres  : ${PRED_BASE}/${LR_TRAINER}/imagesTs/fold_${FOLD}"
-  echo "  cascade : ${PRED_BASE}/${CASCADE_TRAINER}/imagesTs/fold_${FOLD}"
+  echo "  lowres  : ${PRED_BASE}/${LR_TRAINER}/imagesTs/fold_${PRED_FOLD}"
+  echo "  cascade : ${PRED_BASE}/${CASCADE_TRAINER}/imagesTs/fold_${PRED_FOLD}"
 done
