@@ -4,7 +4,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=64G
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
@@ -50,6 +50,12 @@ CASCADE_TRAINERS=(
   "nnUNetTrainerDA5CascadeFullresTopo_100epochs"
   "nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs"
 )
+
+# -------------------------
+# Phase 0: Preprocess lowres + cascade configs
+# -------------------------
+echo "--- Preprocessing 3d_lowres and 3d_cascade_fullres ---"
+nnUNetv2_preprocess -d ${DATASET_ID} -plans_name ${PLANS} -c ${LOWRES} ${CASCADE} -n 4 2
 
 # -------------------------
 # Phase 1: Train all lowres trainers x all folds
