@@ -14,3 +14,10 @@ class nnUNetTrainerDA5_100epochs(nnUNetTrainerDA5):
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
+
+
+class nnUNetTrainerDA5_200epochs(nnUNetTrainerDA5):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device('cuda')):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 200
