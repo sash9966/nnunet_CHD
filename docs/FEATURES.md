@@ -93,9 +93,10 @@ Read this file at the start of any conversation to reconstruct full project stat
 
 | Script | Dataset | Purpose | Epochs | Resume? |
 |---|---|---|---|---|
-| `CHD_Dataset030_imageCHD.sh` | Dataset030 (ID=30) | 3 experiments: DA5 fullres + cascade baseline + cascade topo | 200 | Yes |
-| `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment: DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
 | `CHD_Dataset001_cascade_200epochs.sh` | Dataset001 (ID=1) | 4 cascade pairs: DA5/FiLM/Topo/FiLMTopo | 200 | Yes |
+| `CHD_Dataset013_Fanwei.sh` | Dataset013 (ID=13) | DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
+| `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment: DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
+| `CHD_Dataset030_imageCHD.sh` | Dataset030 (ID=30) | 3 experiments: DA5 fullres + cascade baseline + cascade topo | 200 | Yes |
 | `CHD_Cascade_allFolds.sh` | Dataset001 (ID=1) | Same 4 cascade pairs — legacy 100-epoch version | 100 | No |
 | `train_cascade_ablation.sh` | Dataset001 | Earlier ablation script | — | No |
 
@@ -146,7 +147,8 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | Dataset | ID | Name | Purpose | Disease labels? | Notes |
 |---|---|---|---|---|---|
 | Dataset001 | 1 | `Dataset001_all_imageCHD` | Smoothed imageCHD, cascade ablation research | Yes | Primary research dataset |
-| Dataset020 | 20 | `Dataset020FanweiDataandImageCHD_HU` | Fanwei + imageCHD combined | No | Clinical deployment model |
+| Dataset013 | 13 | `Dataset013_Fanweidatacleaned` | Fanwei cleaned clinical data — standalone baseline | No | No FiLM/topology; DA5 + cascade only |
+| Dataset020 | 20 | `Dataset020FanweiDataandImageCHD_HU` | Fanwei + imageCHD combined | No | Clinical deployment model; superset of Dataset013 |
 | Dataset030 | 30 | `Dataset030_imageCHD_HU` | Kaggle imageCHD with HU values | Yes (same labels) | More vessel branches, less smooth |
 
 **Label scheme (all datasets use same names):**

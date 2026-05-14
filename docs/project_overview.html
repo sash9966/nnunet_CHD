@@ -256,8 +256,8 @@
     <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
-    <div class="dash-card"><div class="num">3</div><div class="label">SLURM Scripts</div></div>
-    <div class="dash-card"><div class="num">3</div><div class="label">Datasets</div></div>
+    <div class="dash-card"><div class="num">4</div><div class="label">SLURM Scripts</div></div>
+    <div class="dash-card"><div class="num">4</div><div class="label">Datasets</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
   </div>
@@ -878,6 +878,13 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
           <td>K=8 disease flags; cascade ablation target</td>
         </tr>
         <tr>
+          <td><span class="badge badge-green">013</span></td>
+          <td class="mono">Dataset013_Fanweidatacleaned</td>
+          <td>Fanwei cleaned clinical data — standalone baseline</td>
+          <td><span class="badge badge-red">No</span></td>
+          <td>No FiLM/topology; DA5 + cascade baseline only</td>
+        </tr>
+        <tr>
           <td><span class="badge badge-blue">020</span></td>
           <td class="mono">Dataset020FanweiDataandImageCHD_HU</td>
           <td>Fanwei + imageCHD combined — clinical deployment</td>
@@ -916,6 +923,24 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
   <div class="section-title"><span>09</span> SLURM Scripts</div>
   <p style="margin-bottom:16px;">All scripts are in <code>scripts/</code>. Each includes a start/end banner, per-fold checkpoint markers, and resumes automatically on resubmission. Logs → <code>/scratch/users/sastocke/nnunet_CHD/logs/</code></p>
   <p style="color:var(--yellow);margin-bottom:16px;">Before first submission: <code>mkdir -p /scratch/users/sastocke/nnunet_CHD/logs</code></p>
+
+  <details open>
+    <summary><span class="badge badge-green">013</span> CHD_Dataset013_Fanwei.sh</summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset013_Fanweidatacleaned (ID=13)</p>
+          <p><strong>SLURM job name:</strong> <code>D013-fanwei</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Folds:</strong> 0–4</p></div>
+        <div><p><strong>2 experiments (5-fold ensemble):</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li>DA5 fullres baseline</li>
+            <li>Cascade baseline (no FiLM, no topology — no disease labels)</li>
+          </ul>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset013_Fanwei.sh</pre>
+    </div>
+  </details>
 
   <details open>
     <summary><span class="badge badge-purple">030</span> CHD_Dataset030_imageCHD.sh</summary>
