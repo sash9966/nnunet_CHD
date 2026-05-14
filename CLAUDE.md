@@ -21,6 +21,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Keep upstream structure intact unless explicitly asked.
 - Avoid changing packaging/install unless required for the experiment.
 
+### Documentation Maintenance (REQUIRED after every feature addition)
+- After adding new trainers, mixins, or scripts: **update `docs/FEATURES.md`** (sections 2, 3, or 4 as appropriate) AND **update `docs/project_overview.html`** (trainer count badge, nav if a new section, relevant table or section body).
+- Commit both docs files together with the code change in the same commit.
+- `docs/FEATURES.md` is the authoritative machine-readable reference — read it at conversation start to reconstruct full project state without re-scanning the codebase.
+- `docs/project_overview.html` is the human-facing browser dashboard — open it in a browser for a visual overview; results entered there persist in localStorage.
+
 ### Composability / Modularity
 - New training features (losses, conditioning methods, augmentations, schedules) MUST be implemented as **mixins** in `variants/mixins/`, using the `TrainerMixin` / `ComposableTrainerMixin` hook system — never as monolithic trainer subclasses.
 - Each mixin implements only `mixin_*` hooks and chains via `super()`. Do not override real nnUNetTrainer methods directly in a mixin; let `ComposableTrainerMixin` dispatch.

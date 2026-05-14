@@ -232,6 +232,9 @@
   <a href="#assumptions">Assumptions</a>
   <a href="#concerns">Concerns</a>
   <a href="#future">Future</a>
+  <a href="#datasets">Datasets</a>
+  <a href="#scripts">Scripts</a>
+  <a href="#checkpoints">Checkpoints</a>
   <div class="nav-right">
     <button class="clear-btn" onclick="clearAll()">Clear Results</button>
     <button class="save-btn" onclick="saveAll()">Save Results</button>
@@ -249,10 +252,12 @@
   </p>
 
   <div class="dash-grid">
-    <div class="dash-card green"><div class="num">22</div><div class="label">Composed Trainers</div></div>
-    <div class="dash-card blue"><div class="num">5</div><div class="label">Mixin Features</div></div>
+    <div class="dash-card green"><div class="num">84</div><div class="label">Composed Trainers</div></div>
+    <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
+    <div class="dash-card"><div class="num">3</div><div class="label">SLURM Scripts</div></div>
+    <div class="dash-card"><div class="num">3</div><div class="label">Datasets</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
   </div>
@@ -856,6 +861,193 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;LOWRES_OUT&gt; -d &lt;ID&gt; -c 3d_lowres 
 nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_fullres -tr nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs -p nnUNetResEncUNetMPlans -f all -prev_stage_predictions &lt;LOWRES_OUT&gt;</pre>
     </div>
   </details>
+</section>
+
+<!-- ── DATASETS ── -->
+<section id="datasets">
+  <div class="section-title"><span>08</span> Dataset Registry</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Folder Name</th><th>Purpose</th><th>Disease labels?</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-accent">001</span></td>
+          <td class="mono">Dataset001_all_imageCHD</td>
+          <td>Smoothed imageCHD — primary research dataset</td>
+          <td><span class="badge badge-green">Yes</span></td>
+          <td>K=8 disease flags; cascade ablation target</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-blue">020</span></td>
+          <td class="mono">Dataset020FanweiDataandImageCHD_HU</td>
+          <td>Fanwei + imageCHD combined — clinical deployment</td>
+          <td><span class="badge badge-red">No</span></td>
+          <td>5-fold ensemble → Slicer extension weights; no FiLM</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">030</span></td>
+          <td class="mono">Dataset030_imageCHD_HU</td>
+          <td>Kaggle imageCHD HU — vessel topology focus</td>
+          <td><span class="badge badge-green">Yes</span></td>
+          <td>More vessel branches than 001; same AO/PA label names</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:16px;">
+    <h3>Label Scheme (all datasets)</h3>
+    <p style="margin-bottom:8px;">Labels 6 (AO) and 7 (PA) are the soft-clDice topology targets. Dataset <code>dataset.json</code> must use exactly these names for the topology mixin to activate.</p>
+    <div class="table-wrap" style="max-width:480px;">
+      <table>
+        <thead><tr><th>ID</th><th>Structure</th><th>Abbrev</th><th>Topo target</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>Background</td><td>BG</td><td>—</td></tr>
+          <tr><td>1–5</td><td>LV-BP, RV-BP, LA, RA, Myo</td><td>—</td><td>—</td></tr>
+          <tr><td>6</td><td>Aorta</td><td class="mono">AO</td><td><span class="badge badge-purple">soft-clDice</span></td></tr>
+          <tr><td>7</td><td>Pulmonary artery</td><td class="mono">PA</td><td><span class="badge badge-purple">soft-clDice</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ── SCRIPTS ── -->
+<section id="scripts">
+  <div class="section-title"><span>09</span> SLURM Scripts</div>
+  <p style="margin-bottom:16px;">All scripts are in <code>scripts/</code>. Each includes a start/end banner, per-fold checkpoint markers, and resumes automatically on resubmission. Logs → <code>/scratch/users/sastocke/nnunet_CHD/logs/</code></p>
+  <p style="color:var(--yellow);margin-bottom:16px;">Before first submission: <code>mkdir -p /scratch/users/sastocke/nnunet_CHD/logs</code></p>
+
+  <details open>
+    <summary><span class="badge badge-purple">030</span> CHD_Dataset030_imageCHD.sh</summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset030_imageCHD_HU (ID=30)</p>
+          <p><strong>SLURM job name:</strong> <code>D030-imageCHD</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Folds:</strong> 0–4</p></div>
+        <div><p><strong>3 experiments:</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li>DA5 fullres baseline (3d_fullres)</li>
+            <li>Cascade baseline (DA5_200e → CascadeFullresBaseline_200e)</li>
+            <li>Cascade topology (DA5CascadeTopo_200e → CascadeFullresTopo_200e)</li>
+          </ul>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset030_imageCHD.sh</pre>
+      <p style="margin-top:8px;">Inference: 5-fold ensemble, results in <code>$nnUNet_results/Dataset030_imageCHD_HU/predictions/</code></p>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-blue">020</span> CHD_Dataset020_clinical.sh</summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset020FanweiDataandImageCHD_HU (ID=20)</p>
+          <p><strong>SLURM job name:</strong> <code>D020-clinical</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Folds:</strong> 0–4</p></div>
+        <div><p><strong>2 experiments (5-fold ensemble):</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li>DA5 fullres baseline</li>
+            <li>Cascade baseline (no FiLM, no topology — no disease labels)</li>
+          </ul>
+          <p style="margin-top:6px;">After training: run <code>nnUNetv2_find_best_configuration 20</code> to select Slicer weights.</p>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset020_clinical.sh</pre>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-accent">001</span> CHD_Dataset001_cascade_200epochs.sh</summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset001_all_imageCHD (ID=1)</p>
+          <p><strong>SLURM job name:</strong> <code>D001-cascade</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Folds:</strong> 0–4</p></div>
+        <div><p><strong>4 cascade pairs:</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li>DA5 → CascadeFullresBaseline</li>
+            <li>DA5CascadeFiLM → CascadeFullresFiLM</li>
+            <li>DA5CascadeTopo → CascadeFullresTopo</li>
+            <li>DA5CascadeFiLMTopo → CascadeFullresFiLMTopo</li>
+          </ul>
+          <p style="margin-top:6px;">FiLM trainers auto-switch to <code>predict_disease_conditioned</code> at inference.</p>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset001_cascade_200epochs.sh</pre>
+      <p style="margin-top:8px;">Inference: fold 0 only. Change <code>-f 0</code> → <code>-f 0 1 2 3 4</code> for full ensemble.</p>
+    </div>
+  </details>
+
+  <div style="margin-top:16px;" class="card">
+    <div class="card-head"><h3>Support Scripts</h3></div>
+    <p><code>scripts/setup_cascade_predictions.py</code> — Creates symlinks so cascade fullres trainers find the lowres <code>predicted_next_stage</code> folder when trainer class names differ between stages.</p>
+    <pre>python scripts/setup_cascade_predictions.py \
+  --lowres_trainer  nnUNetTrainerDA5_200epochs \
+  --cascade_trainer nnUNetTrainerDA5CascadeFullresBaseline_200epochs \
+  --dataset         Dataset001_all_imageCHD \
+  --plans           nnUNetResEncUNetMPlans \
+  --folds           0 1 2 3 4</pre>
+  </div>
+</section>
+
+<!-- ── CHECKPOINTS ── -->
+<section id="checkpoints">
+  <div class="section-title"><span>10</span> Checkpoint / Resume System</div>
+  <p style="margin-bottom:16px;">The three active SLURM scripts (Dataset030, Dataset020, Dataset001 200e) all include a per-fold checkpoint system. If a job hits the 48h wall time mid-run, simply resubmit — it skips every completed step.</p>
+
+  <div class="two-col">
+    <div>
+      <h3>How it works</h3>
+      <div class="card ok" style="margin-bottom:8px;">
+        <p>Each training run (one fold of one trainer) writes a <code>.done</code> file when it finishes cleanly. On resubmission the script checks for this file before launching nnUNet.</p>
+      </div>
+      <div class="card ok">
+        <p>nnUNet itself always saves <code>checkpoint_latest.pth</code> during training. If training was interrupted mid-epoch, the next <code>nnUNetv2_train</code> call for that fold will auto-resume from the latest checkpoint — no bash logic needed.</p>
+      </div>
+    </div>
+    <div>
+      <h3>Inspect progress</h3>
+      <pre># Dataset030
+ls $nnUNet_results/Dataset030_imageCHD_HU/ \
+  .checkpoints/CHD_Dataset030_imageCHD/*.done | sort
+
+# Dataset020
+ls $nnUNet_results/Dataset020FanweiDataandImageCHD_HU/ \
+  .checkpoints/CHD_Dataset020_clinical/*.done | sort
+
+# Dataset001
+ls $nnUNet_results/Dataset001_all_imageCHD/ \
+  .checkpoints/CHD_Dataset001_cascade_200epochs/*.done | sort</pre>
+      <h3 style="margin-top:12px;">Resume</h3>
+      <pre>sbatch scripts/CHD_Dataset030_imageCHD.sh
+# ↑ same command, picks up from last .done</pre>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <h3>Checkpoint key naming</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Pattern</th><th>Example</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">p0_preprocess</td><td>p0_preprocess</td><td>plan_and_preprocess done</td></tr>
+          <tr><td class="mono">p1_fullres_{trainer}_{fold}</td><td>p1_fullres_DA5_200e_fold3</td><td>3d_fullres fold 3 complete</td></tr>
+          <tr><td class="mono">p2_lowres_{trainer}_{fold}</td><td>p2_lowres_DA5CascadeTopo200e_fold0</td><td>3d_lowres fold 0 complete</td></tr>
+          <tr><td class="mono">p3_symlink_...</td><td>p3_symlink_DA5_to_CascadeBaseline</td><td>predicted_next_stage linked</td></tr>
+          <tr><td class="mono">p4_cascade_{trainer}_{fold}</td><td>p4_cascade_CascadeBaseline_200e_fold2</td><td>3d_cascade_fullres fold 2 complete</td></tr>
+          <tr><td class="mono">p5_infer_...</td><td>p5_infer_fullres</td><td>inference on test set done</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card concern" style="margin-top:16px;">
+    <div class="card-head"><h3>Wall-time planning</h3></div>
+    <p>Dataset030: 25 training runs × 200 epochs — likely needs 2–3 submissions.</p>
+    <p>Dataset001: 40 training runs × 200 epochs — likely needs 3–4 submissions.</p>
+    <p>Dataset020: 15 training runs × 200 epochs — should fit in one 48h job.</p>
+    <p style="margin-top:6px;">Split point: end of Phase 1/2 (all lowres done) is the natural break. Cascade fullres can start a new job once symlinks are in place.</p>
+  </div>
 </section>
 
 </div><!-- /page -->
