@@ -34,6 +34,13 @@ class nnUNetTrainerDA5FiLMDropout_100epochs(nnUNetTrainerDA5FiLMDropout):
         self.num_epochs = 100
 
 
+class nnUNetTrainerDA5FiLMDropout_200epochs(nnUNetTrainerDA5FiLMDropout):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device("cuda")):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 200
+
+
 class nnUNetTrainerDA5FiLMDropout_500epochs(nnUNetTrainerDA5FiLMDropout):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
                  device: torch.device = torch.device("cuda")):

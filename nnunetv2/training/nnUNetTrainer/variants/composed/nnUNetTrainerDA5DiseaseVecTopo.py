@@ -24,3 +24,10 @@ class nnUNetTrainerDA5DiseaseVecTopo_100epochs(nnUNetTrainerDA5DiseaseVecTopo):
                  device: torch.device = torch.device("cuda")):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
+
+
+class nnUNetTrainerDA5DiseaseVecTopo_200epochs(nnUNetTrainerDA5DiseaseVecTopo):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device("cuda")):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 200

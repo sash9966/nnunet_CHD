@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nnU-Net CHD — Project Overview</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --bg3: #22263a;
+    --border: #2e3250;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --accent: #7c6af7;
+    --accent2: #4dc9e6;
+    --green: #22d87a;
+    --yellow: #f5c542;
+    --red: #f56565;
+    --orange: #f6a623;
+    --blue: #4dc9e6;
+    --purple: #a78bfa;
+    --radius: 10px;
+    --shadow: 0 2px 16px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,17,23,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex; align-items: center; gap: 6px;
+    height: 52px; overflow-x: auto;
+  }
+  nav .brand { font-size: 14px; font-weight: 700; color: var(--accent); margin-right: 18px; white-space: nowrap; }
+  nav a { color: var(--muted); font-size: 12px; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+  nav a:hover { color: var(--text); background: var(--bg3); text-decoration: none; }
+  .nav-right { margin-left: auto; display: flex; gap: 8px; }
+  button.save-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 12px;
+  }
+  button.save-btn:hover { background: #6759e8; }
+  button.clear-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 14px; cursor: pointer; font-family: inherit; font-size: 12px;
+  }
+  button.clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+  /* ── LAYOUT ── */
+  .page { max-width: 1280px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  /* ── SECTION ── */
+  section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px; margin-bottom: 20px;
+  }
+  .section-title span { color: var(--accent); margin-right: 8px; }
+
+  h1 { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  h2 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+  h3 { font-size: 14px; font-weight: 600; color: var(--accent2); margin-bottom: 8px; }
+  p { color: var(--muted); margin-bottom: 8px; }
+
+  /* ── DASHBOARD CARDS ── */
+  .dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px; margin-bottom: 32px;
+  }
+  .dash-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .dash-card .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .dash-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .dash-card.green .num { color: var(--green); }
+  .dash-card.yellow .num { color: var(--yellow); }
+  .dash-card.red .num { color: var(--red); }
+  .dash-card.blue .num { color: var(--blue); }
+
+  /* ── BADGES ── */
+  .badge {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+  }
+  .badge-green  { background: rgba(34,216,122,0.15); color: var(--green); }
+  .badge-yellow { background: rgba(245,197,66,0.15);  color: var(--yellow); }
+  .badge-red    { background: rgba(245,101,101,0.15); color: var(--red); }
+  .badge-blue   { background: rgba(77,201,230,0.15);  color: var(--blue); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .badge-orange { background: rgba(246,166,35,0.15);  color: var(--orange); }
+  .badge-accent { background: rgba(124,106,247,0.15); color: var(--accent); }
+
+  /* ── TABLES ── */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: var(--bg3); }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.08em; color: var(--muted); white-space: nowrap; }
+  td { padding: 9px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono { font-family: 'SF Mono', monospace; font-size: 11.5px; color: var(--accent2); }
+
+  /* ── INPUT CELLS ── */
+  input.result-input {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 4px 8px;
+    font-family: inherit; font-size: 12px; width: 72px; text-align: center;
+  }
+  input.result-input:focus { outline: none; border-color: var(--accent); }
+  input.result-input.filled { border-color: var(--green); background: rgba(34,216,122,0.07); }
+  textarea.notes-input {
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 5px 8px;
+    font-family: inherit; font-size: 11px; width: 200px; height: 48px; resize: vertical;
+  }
+  textarea.notes-input:focus { outline: none; border-color: var(--accent); }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 12px;
+  }
+  .card.concern { border-left: 3px solid var(--yellow); }
+  .card.assumption { border-left: 3px solid var(--blue); }
+  .card.future { border-left: 3px solid var(--purple); }
+  .card.ok { border-left: 3px solid var(--green); }
+  .card.bug { border-left: 3px solid var(--red); }
+  .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .card-head h3 { margin: 0; }
+
+  /* ── GRID LAYOUT FOR CARDS ── */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+
+  /* ── CODE BLOCK ── */
+  pre {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px 16px;
+    overflow-x: auto; font-size: 11.5px; color: #a8d8ff;
+    margin: 8px 0;
+  }
+  code { font-family: 'SF Mono', monospace; font-size: 11.5px; color: var(--accent2); }
+
+  /* ── CHART ── */
+  .chart-box {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; max-width: 640px;
+  }
+
+  /* ── DETAILS / ACCORDION ── */
+  details { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; }
+  summary {
+    padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 13px;
+    color: var(--text); background: var(--bg2); border-radius: var(--radius);
+    list-style: none; display: flex; align-items: center; gap: 8px;
+  }
+  summary::before { content: '▶'; font-size: 10px; color: var(--muted); transition: transform 0.2s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details[open] summary { border-radius: var(--radius) var(--radius) 0 0; border-bottom: 1px solid var(--border); }
+  .details-body { padding: 16px; background: var(--bg); border-radius: 0 0 var(--radius) var(--radius); }
+
+  /* ── MRO CHAIN ── */
+  .mro { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .mro-item {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 4px; padding: 3px 9px; font-size: 11px; color: var(--text); white-space: nowrap;
+  }
+  .mro-item.highlight { background: rgba(124,106,247,0.2); border-color: var(--accent); color: var(--accent); }
+  .mro-arrow { color: var(--muted); padding: 0 4px; font-size: 12px; }
+
+  /* ── STATUS DOT ── */
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .dot-green  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-red    { background: var(--red); }
+  .dot-blue   { background: var(--blue); }
+  .dot-purple { background: var(--purple); }
+
+  /* ── SAVED NOTIFICATION ── */
+  #save-toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--green); color: #000; font-weight: 700;
+    padding: 10px 20px; border-radius: 8px;
+    display: none; z-index: 999; font-size: 13px;
+  }
+
+  /* ── TWO-COLUMN ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* fold header in result tables */
+  .fold-header { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .fold-label { font-size: 10px; color: var(--muted); width: 50px; text-align: right; }
+  .fold-inputs { display: flex; gap: 4px; }
+
+  /* inline checkbox */
+  input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+  label.check-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--muted); }
+  label.check-label:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <span class="brand">⬡ nnU-Net CHD</span>
+  <a href="#overview">Overview</a>
+  <a href="#labels">Labels</a>
+  <a href="#trainers">Trainers</a>
+  <a href="#cascade">Cascade Ablation</a>
+  <a href="#topology">Topology Loss</a>
+  <a href="#film">FiLM</a>
+  <a href="#assumptions">Assumptions</a>
+  <a href="#concerns">Concerns</a>
+  <a href="#future">Future</a>
+  <div class="nav-right">
+    <button class="clear-btn" onclick="clearAll()">Clear Results</button>
+    <button class="save-btn" onclick="saveAll()">Save Results</button>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- ── HEADER ── -->
+<section id="overview">
+  <h1>nnU-Net CHD — Project Overview</h1>
+  <p style="color:var(--muted); margin-bottom:24px;">
+    Interactive reference for experiments, assumptions, results, and open questions.<br>
+    Results entered below are saved to <code>localStorage</code> — persistent across browser sessions on this machine.
+  </p>
+
+  <div class="dash-grid">
+    <div class="dash-card green"><div class="num">22</div><div class="label">Composed Trainers</div></div>
+    <div class="dash-card blue"><div class="num">5</div><div class="label">Mixin Features</div></div>
+    <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
+    <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
+    <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
+    <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
+  </div>
+</section>
+
+<!-- ── LABELS ── -->
+<section id="labels">
+  <div class="section-title"><span>01</span> Label & Disease Mapping</div>
+  <div class="two-col">
+    <div>
+      <h3>Segmentation Labels</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Structure</th><th>Abbrev</th><th>Topo target?</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>Background</td><td>BG</td><td>—</td></tr>
+            <tr><td>1</td><td>LV blood pool</td><td>LV-BP</td><td>—</td></tr>
+            <tr><td>2</td><td>RV blood pool</td><td>RV-BP</td><td>—</td></tr>
+            <tr><td>3</td><td>Left atrium</td><td>LA</td><td>—</td></tr>
+            <tr><td>4</td><td>Right atrium</td><td>RA</td><td>—</td></tr>
+            <tr><td>5</td><td>Myocardium</td><td>Myo</td><td>—</td></tr>
+            <tr><td>6</td><td>Aorta</td><td>AO</td><td><span class="badge badge-purple">clDice</span></td></tr>
+            <tr><td>7</td><td>Pulmonary artery</td><td>PA</td><td><span class="badge badge-purple">clDice</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:8px; font-size:11px;">Label IDs are <strong>resolved dynamically</strong> from <code>dataset.json</code> by keyword match ("ao"/"aorta", "pa"/"pulmonary"). The IDs 6 &amp; 7 are from the current CHD dataset — verify in <code>dataset.json</code> if dataset changes.</p>
+    </div>
+    <div>
+      <h3>Disease Vector (K=8)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Idx</th><th>Flag</th><th>Key anatomical implication</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>HLHS</td><td>LV may be absent/tiny; AO correction unreliable</td></tr>
+            <tr><td>1</td><td>ASD</td><td>LA–RA may be adjacent (septal defect)</td></tr>
+            <tr><td>2</td><td>VSD</td><td>LV–RV boundary ambiguous</td></tr>
+            <tr><td>3</td><td>AVSD</td><td>All four-chamber septal borders ambiguous</td></tr>
+            <tr><td>4</td><td>DORV</td><td>Both AO and PA exit RV</td></tr>
+            <tr><td>5</td><td>PuA</td><td>AO/PA fused; vessel correction must be skipped</td></tr>
+            <tr><td>6</td><td>ToF</td><td>Overriding aorta straddles VSD</td></tr>
+            <tr><td>7</td><td>TGA</td><td>AO exits RV, PA exits LV (reversed)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRAINER INVENTORY ── -->
+<section id="trainers">
+  <div class="section-title"><span>02</span> Trainer Inventory</div>
+
+  <details open>
+    <summary><span class="dot dot-green"></span> Full-Resolution Single-Stage Trainers</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Class name</th><th>Features</th><th>Status</th><th>Epochs</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5</td>
+              <td>DA5 augmentation only — baseline</td>
+              <td><span class="badge badge-green">Working</span></td>
+              <td>1000</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMV3<br><small style="color:var(--muted)">(aliased as V2)</small></td>
+              <td>DA5 + FiLM bottleneck (K=8, lr×2)</td>
+              <td><span class="badge badge-green">Working</span></td>
+              <td>100 / 500 / 1000</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMDropout</td>
+              <td>FiLM + 10% CFG dropout on disease vec</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>100 / 500</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMAdaptive</td>
+              <td>FiLM + adaptive learning rate</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>100 / 500</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerTopoLossV2</td>
+              <td>clDice topology loss (fixed w=0.2, no DA5)</td>
+              <td><span class="badge badge-blue">Available</span></td>
+              <td>1000</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMTopo</td>
+              <td>DA5 + FiLM + clDice (AO/PA fixed w=0.2)</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>100 / 500</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5TopoScheduled</td>
+              <td>DA5 + clDice with warmup/plateau/decay schedule</td>
+              <td><span class="badge badge-accent">New</span></td>
+              <td>100 / ∞</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5Curriculum</td>
+              <td>DA5 + per-class curriculum CE weights</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMCurriculum</td>
+              <td>DA5 + FiLM + curriculum CE</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5TopoCurriculum</td>
+              <td>DA5 + clDice + curriculum CE</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5FiLMTopoCurriculum</td>
+              <td>DA5 + FiLM + clDice + curriculum CE</td>
+              <td><span class="badge badge-yellow">Untested</span></td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="dot dot-blue"></span> Cascade Low-Res Stage Trainers (3d_lowres)</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Class name</th><th>Features</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">nnUNetTrainerDA5</td><td>Baseline — no conditioning</td><td><span class="badge badge-green">Working</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5CascadeFiLM<br><small>_100epochs</small></td><td>DA5 + FiLM bottleneck</td><td><span class="badge badge-green">Working</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5CascadeTopo<br><small>_100epochs</small></td><td>DA5 + clDice (fixed w=0.2)</td><td><span class="badge badge-green">Working</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMTopo<br><small>_100epochs</small></td><td>DA5 + FiLM + clDice (fixed w=0.2)</td><td><span class="badge badge-green">Working</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5CascadeTopoScheduled<br><small>_100epochs</small></td><td>DA5 + clDice with schedule</td><td><span class="badge badge-accent">New</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMAdjacency</td><td>DA5 + FiLM + adjacency loss (placeholder)</td><td><span class="badge badge-red">Pending</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="dot dot-purple"></span> Cascade High-Res Stage Trainers (3d_cascade_fullres)</summary>
+    <div class="details-body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Class name</th><th>Features</th><th>Status</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CascadeFullresBaseline_100epochs</td>
+              <td>DA5 only</td>
+              <td><span class="badge badge-green">Working</span></td>
+              <td>Name wrapper — no changes from DA5</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CascadeFullresFiLM_100epochs</td>
+              <td>DA5 + FiLM</td>
+              <td><span class="badge badge-green">Working</span></td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CascadeFullresTopo<br><small>_100epochs</small></td>
+              <td>DA5 + clDice (fixed w=0.2)</td>
+              <td><span class="badge badge-accent">Fixed</span></td>
+              <td>Was broken (name-only wrapper). Now uses TopologyLossMixin.</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs</td>
+              <td>DA5 + FiLM + clDice</td>
+              <td><span class="badge badge-accent">Fixed</span></td>
+              <td>Was FiLM-only. Now includes both mixins.</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CascadeFullresTopoScheduled_100epochs</td>
+              <td>DA5 + clDice with schedule</td>
+              <td><span class="badge badge-accent">New</span></td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ── CASCADE ABLATION RESULTS ── -->
+<section id="cascade">
+  <div class="section-title"><span>03</span> Cascade Ablation — Results Matrix</div>
+  <p>Enter Dice scores per fold. Fields persist in localStorage. <code>Mean</code> and <code>AO</code>/<code>PA</code> columns let you track topology-targeted class performance specifically.</p>
+  <br>
+
+  <div class="table-wrap">
+    <table id="results-table">
+      <thead>
+        <tr>
+          <th>Exp</th>
+          <th>Low-res trainer</th>
+          <th>High-res trainer</th>
+          <th>FiLM</th>
+          <th>Topo</th>
+          <th>Mean Dice ↑<br><small style="font-weight:400;text-transform:none">(fold 0–4)</small></th>
+          <th>AO Dice ↑</th>
+          <th>PA Dice ↑</th>
+          <th>TGA Dice ↑<br><small style="font-weight:400;text-transform:none">(hardest)</small></th>
+          <th>Notes</th>
+          <th>Done?</th>
+        </tr>
+      </thead>
+      <tbody id="results-body">
+      </tbody>
+    </table>
+  </div>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Full-Res Baseline Comparison</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Trainer</th>
+          <th>Mean Dice</th>
+          <th>AO Dice</th>
+          <th>PA Dice</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody id="fullres-body">
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── TOPOLOGY LOSS ── -->
+<section id="topology">
+  <div class="section-title"><span>04</span> Topology Loss — soft-clDice</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Algorithm (Shit et al., CVPR 2021)</h3>
+      <pre>
+# 1. Soft skeleton (iterative morphological opening)
+for i in range(num_iter=10):
+    opened  = soft_open(current)      # erode → dilate (3×3×3 kernel)
+    skel   += ReLU(current - opened)  # residual: thin structures
+    current = soft_erode(current)
+
+# 2. clDice loss (per target class)
+skel_pred = skeletonize(pred_prob)   # differentiable
+skel_gt   = skeletonize(gt_mask)     # no grad needed
+
+tprec = Σ(skel_pred · gt)   / Σ(skel_pred)   # skeleton inside GT
+tsens = Σ(skel_gt  · pred)  / Σ(skel_gt)     # GT skeleton inside pred
+
+clDice = 2·tprec·tsens / (tprec + tsens)
+loss   = 1 - clDice</pre>
+
+      <h3 style="margin-top:16px;">Fixed-weight Mixin Parameters</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Parameter</th><th>Value</th><th>Rationale</th></tr></thead>
+          <tbody>
+            <tr><td>topo_weight</td><td>0.2</td><td>Fixed throughout training</td></tr>
+            <tr><td>topo_num_iter</td><td>10</td><td>Default; balances compute vs quality</td></tr>
+            <tr><td>topo_class_ids</td><td>[6, 7]</td><td>AO + PA (from dataset.json keywords)</td></tr>
+            <tr><td>kernel size</td><td>3</td><td>Hard-coded in soft_erode / soft_dilate</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <h3>Scheduled-weight Mixin Parameters</h3>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr><th>Parameter</th><th>Default</th><th>Phase</th></tr></thead>
+          <tbody>
+            <tr><td>topo_warmup_epochs</td><td>10</td><td>0 → w_high ramp</td></tr>
+            <tr><td>topo_decay_start</td><td>40</td><td>plateau ends here</td></tr>
+            <tr><td>topo_w_high</td><td>0.5</td><td>peak weight</td></tr>
+            <tr><td>topo_w_low</td><td>0.05</td><td>final weight after decay</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="chart-box">
+        <canvas id="scheduleChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <br>
+  <h3>Implementation Files</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>File</th><th>Contains</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">nnunetv2/training/loss/topology_losses.py</td><td>SoftSkeletonize, SoftClDiceLoss, TopologyLoss, topo_weight_schedule</td><td><span class="badge badge-green">Tested</span></td></tr>
+        <tr><td class="mono">variants/mixins/topology_loss.py</td><td>TopologyLossMixin (fixed), TopologyLossScheduledMixin (new)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td class="mono">nnunetv2/tests/test_topology_loss.py</td><td>Unit tests: 2D/3D shapes, gradient flow, absent class, schedule</td><td><span class="badge badge-green">Pass</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── FILM CONDITIONING ── -->
+<section id="film">
+  <div class="section-title"><span>05</span> FiLM Disease Conditioning</div>
+
+  <div class="two-col">
+    <div>
+      <h3>Architecture (bottleneck-only)</h3>
+      <pre>
+Image → Encoder → Bottleneck → FiLM → Decoder → Output
+                      ↑
+             disease_mlp(vec_K8)
+                → (γ, β)  ← channel-wise
+             feature = (1 + γ) × feature + β</pre>
+      <br>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Parameter</th><th>Value</th><th>Rationale</th></tr></thead>
+          <tbody>
+            <tr><td>disease_K</td><td>8</td><td>Matches disease_map.json flags</td></tr>
+            <tr><td>disease_lr_multiplier</td><td>2.0</td><td>FiLM heads learn faster than backbone</td></tr>
+            <tr><td>FiLM init</td><td>near-zero (σ=0.01)</td><td>Identity at start — preserves baseline</td></tr>
+            <tr><td>CFG dropout</td><td>10% of batches → zero vec</td><td>Robustness to missing disease info</td></tr>
+            <tr><td>Stages conditioned</td><td>Bottleneck only</td><td>N decoder stages → (1+γ)^N instability</td></tr>
+            <tr><td>disease_param_prefixes</td><td>{'disease_mlp', 'bottleneck_film'}</td><td>Used by optimizer param groups</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3>Why bottleneck-only?</h3>
+      <div class="card assumption">
+        <div class="card-head"><span class="dot dot-yellow"></span><h3>Instability lesson</h3></div>
+        <p>Early experiments applied FiLM at all N=7 decoder stages. With γ=0.1 and N=7, feature distortion compounds to (1+0.1)^7 ≈ 1.95× — nearly 2× amplification. Combined with LR×10 and momentum 0.99, γ grew large fast, destabilising training. Bottleneck-only avoids this entirely.</p>
+      </div>
+      <h3 style="margin-top:16px;">Required file: disease_map.json</h3>
+      <pre>
+# Location during training:
+$nnUNet_preprocessed/DatasetXXX/disease_map.json
+
+# Copied to model folder at train start:
+$nnUNet_results/.../disease_map.json
+
+# Format: {"case_id": [b0,b1,...,b7], ...}
+{"SV_001": [0,0,1,0,0,0,0,1], ...}</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ── ASSUMPTIONS ── -->
+<section id="assumptions">
+  <div class="section-title"><span>06</span> Implementation Assumptions</div>
+  <div class="card-grid">
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>AO = label 6, PA = label 7</h3></div>
+      <p>Resolved from <code>dataset.json["labels"]</code> by substring match. Keywords searched: <code>"ao"</code>, <code>"aorta"</code> for AO; <code>"pa"</code>, <code>"pulmonary"</code> for PA. If your dataset renames these labels, topology loss silently disables with a WARNING log line. Always check <code>print_to_log_file</code> output on first run.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>Full structure in low-res patch</h3></div>
+      <p>The cascade low-res stage is assumed to have a patch size covering the entire cardiac anatomy so that clDice skeleton enforcement is globally meaningful. This requires <code>ExperimentPlannerForceLowRes</code> — the default planner only creates lowres when the fullres patch covers &lt;25% of the median image volume.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>Scheduled topo defaults not tuned on real data</h3></div>
+      <p>warmup=10, decay_start=40, w_high=0.5, w_low=0.05 were chosen by analogy with the existing schedule function defaults. These have NOT been validated against actual loss curves on CHD data. The peak weight 0.5 is higher than the fixed-weight default of 0.2 — monitor early training carefully.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>clDice applied to full-resolution output only</h3></div>
+      <p>Deep supervision produces outputs at multiple scales. Topology loss is applied only to <code>output[0]</code> (the full-res logits). Downsampled deep supervision outputs lose thin-vessel detail making skeletonization unreliable at smaller scales.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>High-res cascade patch covers local region only</h3></div>
+      <p>Unlike the low-res stage, the cascade-fullres patch is sized for boundary refinement — it may only cover a portion of the aorta or pulmonary artery. clDice skeleton enforcement here is <em>local</em>, not global. This is likely still helpful for local connectivity but is conceptually different from the low-res global enforcement.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>ResEncUNet backbone (not plain UNet)</h3></div>
+      <p>All FiLM conditioning and composed trainers assume <code>ResidualEncoderUNet</code> from <code>dynamic-network-architectures</code> — this is the architecture selected by <code>nnUNetResEncUNetMPlans</code>. <code>FiLMConditionedResEncUNet</code> wraps this specific architecture. If the planner selects a plain UNet, <code>build_disease_conditioned_network</code> will fail.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>Static build_network_architecture call</h3></div>
+      <p><code>nnUNetPredictor</code> calls <code>build_network_architecture</code> as a static method. Trainers override this as an instance method with a shim that detects <code>isinstance(self, str)</code> and unshifts arguments for the static call path. Any new trainer with a custom <code>build_network_architecture</code> must replicate this pattern.</p>
+    </div>
+
+    <div class="card assumption">
+      <div class="card-head"><span class="badge badge-blue">Assumption</span><h3>mixin_on_train_epoch_start chain</h3></div>
+      <p><code>TopologyLossScheduledMixin.mixin_on_train_epoch_start</code> calls <code>super()</code> — this chains correctly if no other mixin in the MRO also uses this hook without chaining. Currently no conflicts. If <code>CurriculumWeightsMixin</code> is stacked with <code>TopologyLossScheduledMixin</code>, check that both call <code>super()</code> correctly.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── CONCERNS ── -->
+<section id="concerns">
+  <div class="section-title"><span>07</span> Open Questions & Concerns</div>
+  <div class="card-grid">
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>Does FiLM actually learn meaningful γ/β?</h3></div>
+      <p>The near-zero init means FiLM starts as identity. Gradient flow through the disease_mlp to γ/β requires the segmentation output to be sensitive to the bottleneck features. Has anyone checked that γ values diverge from zero during training? Suggest logging <code>bottleneck_film.weight.abs().mean()</code> periodically.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q1-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q1-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>clDice at high-res cascade: local vs global topology</h3></div>
+      <p>The fullres cascade patch covers only a local region of the aorta. A skeleton that starts/ends at patch boundaries may compute a degraded clDice (the truncated skeleton has lower precision/sensitivity than the true centerline). This has not been empirically tested. If clDice degrades at high-res, topology should only be applied at the low-res stage.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q2-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q2-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>Is topo_w_high=0.5 too aggressive?</h3></div>
+      <p>The scheduled mixin peaks at weight 0.5, more than twice the fixed-weight default of 0.2. If the main Dice+CE loss produces values ~1.0 at peak, a topo weight of 0.5 gives it ~33% of the total gradient signal. This may be appropriate or may over-constrain topology at the expense of overall Dice. Monitor training loss curves carefully on the first scheduled run.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q3-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q3-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>num_iter=10: memory cost in 3D?</h3></div>
+      <p>Each iteration runs <code>max_pool3d</code> twice (erode + dilate). With num_iter=10 and patch size ~128³, compute is O(10 × 128³) per batch per class. For 2 classes (AO + PA) this is 20 pooling ops per batch. Has peak GPU memory been profiled? On memory-constrained GPUs, num_iter=5 may be sufficient with minimal quality loss.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q4-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q4-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>Are HLHS/PuA cases handled correctly by topo?</h3></div>
+      <p>In HLHS the aorta may be severely hypoplastic or absent. In PuA the pulmonary artery is fused/absent. For these cases, the GT skeleton is extremely small or empty — the topology loss will be close to 0 (the absent-class skip handles truly empty GT) but a near-empty skeleton still produces high topo loss values. Should these cases be excluded from topology supervision?</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q5-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q5-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>Cascade symlink setup: is scripts/setup_cascade_predictions.py complete?</h3></div>
+      <p>The cascade workflow requires symlinks from the lowres validation folder into the cascade-fullres trainer's expected input path. The <code>setup_cascade_predictions.py</code> script is referenced in docs but it's unclear whether it handles all trainer name combinations for the new fixed Topo and TopoScheduled high-res trainers.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q6-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q6-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>FiLM at high-res cascade: disease_map.json available at inference?</h3></div>
+      <p>The cascade-fullres FiLM trainer needs the disease vector at both training and inference time. At inference, <code>predict_disease_conditioned.py</code> reads <code>disease_map.json</code> from the model folder (copied there at train start). Verify the cascade-fullres FiLM trainer copies this file and that the inference script handles the cascade pipeline correctly.</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q7-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q7-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="badge badge-yellow">Question</span><h3>DA5 augmentation: is it appropriate for cardiac CT?</h3></div>
+      <p>DA5 includes aggressive augmentations from nnU-Net's ablation study (DA5 = all augmentations enabled). For cardiac structures like atria and ventricles, extreme deformation/rotation may produce unrealistic geometries that hurt generalisation. Has DA5 vs default augmentation been compared on this dataset?</p>
+      <div style="margin-top:10px">
+        <label class="check-label"><input type="checkbox" id="q8-done" onchange="saveCheckbox(this)"> Investigated</label>
+        <textarea class="notes-input" id="q8-notes" placeholder="findings..." oninput="markFilled(this)" onchange="saveNotes(this)"></textarea>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── FUTURE DIRECTIONS ── -->
+<section id="future">
+  <div class="section-title"><span>08</span> Future Directions</div>
+  <div class="card-grid">
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>Per-disease topology exclusion</h3></div>
+      <p>Create a <code>TopologyLossConditionalMixin</code> that reads the disease vector from the batch and disables clDice for HLHS (flag 0) and PuA (flag 5) cases — where the vessels are absent or fused. This would prevent topology loss from penalising correct near-empty AO/PA predictions for these specific pathologies.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>Adjacency loss for VSD/AVSD</h3></div>
+      <p><code>nnUNetTrainerDA5CascadeFiLMAdjacency</code> exists as a placeholder. VSD (flag 2) and AVSD (flag 3) require the model to learn that LV–RV boundaries are absent. An adjacency-consistency loss that penalises disconnected LV–RV predictions in these cases could complement the FiLM conditioning.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>Post-processing: disease-conditioned largest-CC</h3></div>
+      <p>Post-processing with disease-aware connected-component analysis (keep N largest CCs based on disease flags) was deferred in favour of solid training. Once training protocol is stable, this could cleanly eliminate spurious vessel predictions in TGA/DORV cases as a fast rule-based step.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>clDice + Dice combined main loss</h3></div>
+      <p>Current: main loss = Dice+CE, topology = extra term (weight 0.2). The original clDice paper proposes <code>α·Dice + (1-α)·clDice</code> as the primary loss, replacing CE entirely. This has shown stronger topology preservation. A new <code>ClDiceMainLossMixin</code> could replace the loss function rather than augmenting it.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>FiLM at multiple encoder stages</h3></div>
+      <p>Bottleneck-only conditioning limits the spatial resolution of disease-aware features. A safer multi-stage approach: apply FiLM only at the 2 lowest-resolution encoder stages (large receptive field, stable features). The original instability was from N=7 decoder stages — encoder conditioning with N=2–3 stages is less likely to diverge.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-purple">Future</span><h3>Cross-attention disease conditioning</h3></div>
+      <p>Replace FiLM's channel-wise scale/shift with a cross-attention mechanism where the disease vector attends to spatial feature maps at the bottleneck. This allows the model to selectively amplify spatially-localised disease-relevant features rather than applying uniform channel rescaling.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── ARCHITECTURE REFERENCE ── -->
+<section>
+  <div class="section-title"><span>09</span> Composable MRO Reference</div>
+
+  <details>
+    <summary>Example MRO chains for key trainers</summary>
+    <div class="details-body">
+      <p style="margin-bottom:16px;">Python resolves hooks left-to-right across the MRO. Each mixin calls <code>super()</code> to chain to the next. <code>TrainerMixin</code> provides no-op terminators.</p>
+
+      <h3 style="margin-bottom:8px;">DA5CascadeFiLMTopo (low-res)</h3>
+      <div class="mro" style="margin-bottom:16px;">
+        <span class="mro-item highlight">DiseaseConditioningMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item highlight">TopologyLossMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">ComposableTrainerMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainerDA5</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainer</span><span class="mro-arrow">→</span>
+        <span class="mro-item">TrainerMixin</span>
+      </div>
+
+      <h3 style="margin-bottom:8px;">DA5CascadeFullresFiLMTopo (high-res, fixed)</h3>
+      <div class="mro" style="margin-bottom:16px;">
+        <span class="mro-item highlight">DiseaseConditioningMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item highlight">TopologyLossMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">ComposableTrainerMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainerDA5</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainer</span><span class="mro-arrow">→</span>
+        <span class="mro-item">TrainerMixin</span>
+      </div>
+
+      <h3 style="margin-bottom:8px;">DA5CascadeTopoScheduled (low-res, scheduled)</h3>
+      <div class="mro" style="margin-bottom:16px;">
+        <span class="mro-item highlight">TopologyLossScheduledMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">TopologyLossMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">ComposableTrainerMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainerDA5</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainer</span><span class="mro-arrow">→</span>
+        <span class="mro-item">TrainerMixin</span>
+      </div>
+
+      <h3 style="margin-bottom:8px;">DA5FiLMTopoCurriculum (full-res, all features)</h3>
+      <div class="mro">
+        <span class="mro-item highlight">DiseaseConditioningMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item highlight">TopologyLossMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item highlight">CurriculumWeightsMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">ComposableTrainerMixin</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainerDA5</span><span class="mro-arrow">→</span>
+        <span class="mro-item">nnUNetTrainer</span>
+      </div>
+    </div>
+  </details>
+
+  <details style="margin-top:8px;">
+    <summary>Cascade workflow commands (quick reference)</summary>
+    <div class="details-body">
+      <pre>
+# 1. Plan + preprocess (force lowres)
+nnUNetv2_plan_experiment -d &lt;ID&gt; -pl ExperimentPlannerForceLowRes -c 3d_fullres
+nnUNetv2_preprocess -d &lt;ID&gt; -plans_name nnUNetResEncUNetMPlans -c 3d_lowres 3d_cascade_fullres
+
+# 2. Train low-res stage (repeat for folds 0–4)
+nnUNetv2_train &lt;ID&gt; 3d_lowres &lt;FOLD&gt; -tr nnUNetTrainerDA5CascadeFiLMTopo_100epochs -p nnUNetResEncUNetMPlans
+
+# 3. Create symlinks for cross-trainer cascade
+python scripts/setup_cascade_predictions.py \
+    --lowres_trainer  nnUNetTrainerDA5CascadeFiLMTopo_100epochs \
+    --cascade_trainer nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs \
+    --dataset Dataset001_CHD --plans nnUNetResEncUNetMPlans --folds 0 1 2 3 4
+
+# 4. Train high-res cascade stage
+nnUNetv2_train &lt;ID&gt; 3d_cascade_fullres &lt;FOLD&gt; -tr nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs -p nnUNetResEncUNetMPlans
+
+# 5. Inference
+nnUNetv2_predict -i &lt;IN&gt; -o &lt;LOWRES_OUT&gt; -d &lt;ID&gt; -c 3d_lowres -tr nnUNetTrainerDA5CascadeFiLMTopo_100epochs -p nnUNetResEncUNetMPlans -f all
+nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_fullres -tr nnUNetTrainerDA5CascadeFullresFiLMTopo_100epochs -p nnUNetResEncUNetMPlans -f all -prev_stage_predictions &lt;LOWRES_OUT&gt;</pre>
+    </div>
+  </details>
+</section>
+
+</div><!-- /page -->
+
+<div id="save-toast">Results saved ✓</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA: cascade ablation experiments
+// ─────────────────────────────────────────────────────────────────────────────
+const cascadeExps = [
+  { id:'baseline', label:'Baseline',
+    lowres: 'nnUNetTrainerDA5_100epochs',
+    highres: 'DA5CascadeFullresBaseline_100epochs',
+    film: false, topo: false },
+  { id:'expA', label:'A',
+    lowres: 'DA5CascadeFiLM_100epochs',
+    highres: 'DA5CascadeFullresFiLM_100epochs',
+    film: true, topo: false },
+  { id:'expB', label:'B',
+    lowres: 'DA5CascadeFiLMTopo_100epochs',
+    highres: 'DA5CascadeFullresFiLM_100epochs',
+    film: true, topo: true },
+  { id:'expD', label:'D',
+    lowres: 'DA5CascadeTopo_100epochs',
+    highres: 'DA5CascadeFullresTopo_100epochs',
+    film: false, topo: true },
+  { id:'expBfull', label:'B+',
+    lowres: 'DA5CascadeFiLMTopo_100epochs',
+    highres: 'DA5CascadeFullresFiLMTopo_100epochs',
+    film: true, topo: true,
+    note: 'FiLM+Topo at both stages (fixed)' },
+  { id:'expSched', label:'D-S',
+    lowres: 'DA5CascadeTopoScheduled_100epochs',
+    highres: 'DA5CascadeFullresTopoScheduled_100epochs',
+    film: false, topo: true,
+    note: 'Scheduled weight (new)' },
+];
+
+const fullresExps = [
+  { id:'fr_baseline', label: 'DA5 Baseline',        trainer: 'nnUNetTrainerDA5' },
+  { id:'fr_film',     label: 'DA5 + FiLM',          trainer: 'nnUNetTrainerDA5FiLMV3_500epochs' },
+  { id:'fr_topo',     label: 'DA5 + Topo (fixed)',   trainer: 'nnUNetTrainerTopoLossV2 / DA5FiLMTopo' },
+  { id:'fr_toposched',label: 'DA5 + Topo (sched)',   trainer: 'nnUNetTrainerDA5TopoScheduled_100epochs' },
+  { id:'fr_curri',    label: 'DA5 + FiLM + Topo + Curriculum', trainer: 'DA5FiLMTopoCurriculum' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUILD RESULT TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+function buildTables() {
+  const tbody = document.getElementById('results-body');
+  cascadeExps.forEach(exp => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${exp.label}</strong></td>
+      <td class="mono" style="font-size:10px">${exp.lowres}</td>
+      <td class="mono" style="font-size:10px">${exp.highres}</td>
+      <td>${exp.film ? '✓' : '—'}</td>
+      <td>${exp.topo ? '✓' : '—'}</td>
+      <td><input class="result-input" id="${exp.id}_mean" placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><input class="result-input" id="${exp.id}_ao"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><input class="result-input" id="${exp.id}_pa"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><input class="result-input" id="${exp.id}_tga"  placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><textarea class="notes-input" id="${exp.id}_notes" placeholder="${exp.note || 'notes...'}" oninput="markFilled(this)" onchange="saveResults()"></textarea></td>
+      <td><input type="checkbox" id="${exp.id}_done" onchange="saveResults()"></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const fbody = document.getElementById('fullres-body');
+  fullresExps.forEach(exp => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="mono" style="font-size:10.5px">${exp.trainer}</span></td>
+      <td><input class="result-input" id="${exp.id}_mean" placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><input class="result-input" id="${exp.id}_ao"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><input class="result-input" id="${exp.id}_pa"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+      <td><textarea class="notes-input" id="${exp.id}_notes" placeholder="notes..." oninput="markFilled(this)" onchange="saveResults()"></textarea></td>
+    `;
+    fbody.appendChild(tr);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOPOLOGY WEIGHT SCHEDULE CHART
+// ─────────────────────────────────────────────────────────────────────────────
+function buildChart() {
+  function scheduleWeight(e, N, wu=10, ds=40, wh=0.5, wl=0.05) {
+    if (e < wu) return wh * (e / Math.max(wu, 1));
+    if (e < ds) return wh;
+    const p = Math.min((e - ds) / Math.max(N - ds, 1), 1.0);
+    return wl + 0.5 * (wh - wl) * (1 + Math.cos(Math.PI * p));
+  }
+  const epochs = Array.from({length:101}, (_,i) => i);
+  const scheduled = epochs.map(e => scheduleWeight(e, 100));
+  const fixed = epochs.map(() => 0.2);
+
+  new Chart(document.getElementById('scheduleChart'), {
+    type: 'line',
+    data: {
+      labels: epochs,
+      datasets: [
+        { label: 'Scheduled (new)', data: scheduled,
+          borderColor: '#7c6af7', backgroundColor: 'rgba(124,106,247,0.1)',
+          borderWidth: 2, pointRadius: 0, fill: true, tension: 0.3 },
+        { label: 'Fixed (existing)', data: fixed,
+          borderColor: '#f5c542', backgroundColor: 'rgba(245,197,66,0.08)',
+          borderWidth: 2, pointRadius: 0, borderDash: [5,4], fill: false },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#8892b0', font: { family: 'monospace', size: 11 } } },
+        title: { display: true, text: 'Topology Loss Weight Schedule (100 epochs)',
+                 color: '#e2e8f0', font: { family: 'monospace', size: 12 } }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Epoch', color: '#8892b0' },
+             ticks: { color: '#8892b0' }, grid: { color: '#2e3250' } },
+        y: { title: { display: true, text: 'topo_weight', color: '#8892b0' },
+             ticks: { color: '#8892b0' }, grid: { color: '#2e3250' }, min: 0, max: 0.6 }
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSISTENCE (localStorage)
+// ─────────────────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'nnunet_chd_results_v2';
+
+function markFilled(el) {
+  el.classList.toggle('filled', el.value.trim().length > 0);
+  updateDashboard();
+}
+
+function updateDashboard() {
+  const inputs = document.querySelectorAll('.result-input, .notes-input');
+  let filled = 0;
+  inputs.forEach(inp => { if (inp.value.trim()) filled++; });
+  document.getElementById('results-filled').textContent = filled;
+}
+
+function collectState() {
+  const state = {};
+  document.querySelectorAll('[id]').forEach(el => {
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      if (el.type === 'checkbox') state[el.id] = el.checked;
+      else state[el.id] = el.value;
+    }
+  });
+  return state;
+}
+
+function saveResults() { /* debounced by onchange */ }
+
+function saveAll() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState()));
+  const toast = document.getElementById('save-toast');
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 2000);
+}
+
+function saveNotes(el) { saveAll(); }
+function saveCheckbox(el) { saveAll(); }
+
+function loadState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const state = JSON.parse(raw);
+    Object.entries(state).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = val;
+      else { el.value = val; el.classList.toggle('filled', val.trim().length > 0); }
+    });
+    updateDashboard();
+  } catch(e) { console.warn('Could not load saved state', e); }
+}
+
+function clearAll() {
+  if (!confirm('Clear all entered results? This cannot be undone.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  document.querySelectorAll('.result-input, .notes-input').forEach(el => {
+    el.value = ''; el.classList.remove('filled');
+  });
+  document.querySelectorAll('input[type=checkbox]').forEach(el => el.checked = false);
+  updateDashboard();
+}
+
+// Auto-save on input
+document.addEventListener('input', e => {
+  if (e.target.classList.contains('result-input') || e.target.classList.contains('notes-input')) {
+    markFilled(e.target);
+    setTimeout(saveAll, 500);
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target.type === 'checkbox') { setTimeout(saveAll, 100); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────────
+buildTables();
+buildChart();
+loadState();
+</script>
+</body>
+</html>

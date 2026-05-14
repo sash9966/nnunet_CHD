@@ -29,3 +29,10 @@ class nnUNetTrainerDA5CascadeTopo_100epochs(nnUNetTrainerDA5CascadeTopo):
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
+
+
+class nnUNetTrainerDA5CascadeTopo_200epochs(nnUNetTrainerDA5CascadeTopo):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device('cuda')):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 200

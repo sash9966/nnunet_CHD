@@ -37,6 +37,13 @@ class nnUNetTrainerDA5FiLMTopoCurriculum_100epochs(nnUNetTrainerDA5FiLMTopoCurri
         self.num_epochs = 100
 
 
+class nnUNetTrainerDA5FiLMTopoCurriculum_200epochs(nnUNetTrainerDA5FiLMTopoCurriculum):
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device("cuda")):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 200
+
+
 class nnUNetTrainerDA5FiLMTopoCurriculum_500epochs(nnUNetTrainerDA5FiLMTopoCurriculum):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
                  device: torch.device = torch.device("cuda")):

@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import torch
 
-from nnunetv2.training.loss.topology_losses import TopologyLoss
+from nnunetv2.training.loss.topology_losses import TopologyLoss, topo_weight_schedule
 from nnunetv2.training.nnUNetTrainer.variants.loss.nnUNetTrainerTopoLoss import (
     _resolve_topo_class_ids,
     _foreground_label_names,
@@ -64,3 +64,41 @@ class TopologyLossMixin(TrainerMixin):
             topo_l = self.topo_loss(full_res_output, full_res_target)
             extra = extra + self.topo_weight * topo_l
         return extra
+
+
+class TopologyLossScheduledMixin(TopologyLossMixin):
+    """Like TopologyLossMixin but with a warmup → plateau → cosine-decay weight schedule.
+
+    The topology loss weight starts at 0 and linearly ramps to ``topo_w_high``
+    over ``topo_warmup_epochs`` epochs, stays at ``topo_w_high`` until
+    ``topo_decay_start``, then cosine-decays to ``topo_w_low`` by the end of
+    training.
+
+    This avoids topology loss destabilising early training when the main
+    Dice/CE loss has not yet converged.
+
+    Subclasses can override the four schedule parameters as class attributes.
+    """
+
+    def mixin_init(self):
+        super().mixin_init()
+        self.topo_weight         = 0.0   # overwritten each epoch; start silent
+        self.topo_warmup_epochs  = 10
+        self.topo_decay_start    = 40
+        self.topo_w_high         = 0.5
+        self.topo_w_low          = 0.05
+
+    def mixin_on_train_epoch_start(self):
+        super().mixin_on_train_epoch_start()
+        self.topo_weight = topo_weight_schedule(
+            self.current_epoch,
+            self.num_epochs,
+            warmup_epochs=self.topo_warmup_epochs,
+            decay_start_epoch=self.topo_decay_start,
+            w_high=self.topo_w_high,
+            w_low=self.topo_w_low,
+        )
+        if getattr(self, 'local_rank', 0) == 0:
+            self.print_to_log_file(
+                f"[TopoSched] epoch={self.current_epoch} topo_weight={self.topo_weight:.4f}"
+            )
