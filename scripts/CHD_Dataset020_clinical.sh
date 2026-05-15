@@ -80,6 +80,21 @@ mkdir -p "${CKPT_DIR}"
 mark_done() { touch "${CKPT_DIR}/${1}.done"; }
 is_done()   { [[ -f "${CKPT_DIR}/${1}.done" ]]; }
 
+verify_preprocessing() {
+    local cfg=$1
+    local n_raw n_prep prep_dir
+    n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000")
+    prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*${cfg}" | head -1)
+    n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*.b2nd" 2>/dev/null | wc -l)
+    echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases preprocessed"
+    if [[ ${n_prep} -lt ${n_raw} ]]; then
+        echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
+        echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
+        echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
+        exit 1
+    fi
+}
+
 # ─────────────────────────────────────────────
 # 4.  Banner helpers
 # ─────────────────────────────────────────────
@@ -158,6 +173,8 @@ else
         --verify_dataset_integrity
     mark_done "p0_preprocess"
 fi
+verify_preprocessing "${FULLRES}"
+verify_preprocessing "${LOWRES}"
 
 # ─────────────────────────────────────────────
 # Phase 1 — DA5 fullres baseline (Experiment 1)
