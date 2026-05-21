@@ -64,7 +64,7 @@ CASCADE="3d_cascade_fullres"
 REPO="/scratch/users/sastocke/nnunet_CHD"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
-CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/$(basename "${BASH_SOURCE[0]}" .sh)"
+CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset001_cascade_200epochs"
 START_TS=$(date +%s)
 
 # Parallel arrays: LOWRES_TRAINERS[i] pairs with CASCADE_TRAINERS[i]
@@ -94,9 +94,16 @@ verify_preprocessing() {
     local cfg=$1
     local n_raw n_prep prep_dir
     n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000")
-    prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*${cfg}" | head -1)
-    n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*.b2nd" 2>/dev/null | wc -l)
-    echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases preprocessed"
+    prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*_${cfg}" 2>/dev/null | head -1)
+    if [[ -z "${prep_dir}" ]]; then
+        echo "ERROR: No preprocessed directory found for ${cfg}."
+        echo "  Looked in: ${nnUNet_preprocessed}/${DATASET_NAME}/*_${cfg}"
+        echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -plans_name ${PLANS} -c ${cfg}"
+        echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
+        exit 1
+    fi
+    n_prep=$(find "${prep_dir}" -maxdepth 1 \( -name "*.b2nd" -o -name "*.npy" \) 2>/dev/null | wc -l)
+    echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${prep_dir}"
     if [[ ${n_prep} -lt ${n_raw} ]]; then
         echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -plans_name ${PLANS} -c ${cfg}"
