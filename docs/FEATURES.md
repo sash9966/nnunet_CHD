@@ -18,6 +18,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `disease_conditioning.py` | `DiseaseConditioningMixin` | FiLM or Gated conditioning; requires `disease_map.json` |
 | `curriculum_weights.py` | `CurriculumWeightsMixin` | AO/PA CE class weights upweighted in early epochs |
 | `aux_diagnosis_mixin.py` | `AuxiliaryDiagnosisMixin` | Bottleneck MLP classification head (K=8); BCEWithLogitsLoss aux loss (weight 0.1); exposes 256-d `diagnosis_embedding`; 3× LR on head params |
+| `cross_attention_mixin.py` | `CrossAttentionConditioningMixin` | Single-head cross-attention at every decoder stage; (B,8,64) disease token sequence; attention entropy logged every 50 steps; **mutually exclusive** with `DiseaseConditioningMixin`; composes with `AuxiliaryDiagnosisMixin` (embedding-reuse path) |
 
 **Hook chain order:** Feature mixins → `ComposableTrainerMixin` → base trainer (DA5 / nnUNetTrainer)
 
@@ -82,6 +83,13 @@ Read this file at the start of any conversation to reconstruct full project stat
 - `nnUNetTrainerDA5CascadeFullresTopo` + `_100e/_200e`
 - `nnUNetTrainerDA5CascadeFullresFiLMTopo` + `_100e/_200e`
 
+### Cross-Attention Conditioning
+| Class | File |
+|---|---|
+| `nnUNetTrainerDA5CrossAttn` + `_100e/_200e` | `nnUNetTrainerDA5CrossAttn.py` |
+| `nnUNetTrainerDA5CrossAttnTopo` + `_100e/_200e` | same |
+| `nnUNetTrainerDA5AuxDiagCrossAttn` + `_100e/_200e` | same |
+
 ### Auxiliary Diagnosis Head
 | Class | File |
 |---|---|
@@ -106,6 +114,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment: DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
 | `CHD_Dataset030_imageCHD.sh` | Dataset030 (ID=30) | 3 experiments: DA5 fullres + cascade baseline + cascade topo | 200 | Yes |
 | `CHD_Dataset030_AuxDiag.sh` | Dataset030 (ID=30) | 3 experiments: AuxDiag / AuxDiagTopo / FiLMAuxDiag fullres | 200 | Yes |
+| `CHD_Dataset030_CrossAttn.sh` | Dataset030 (ID=30) | 3 experiments: CrossAttn / CrossAttnTopo / AuxDiagCrossAttn fullres | 200 | Yes |
 | `CHD_Cascade_allFolds.sh` | Dataset001 (ID=1) | Same 4 cascade pairs — legacy 100-epoch version | 100 | No |
 | `train_cascade_ablation.sh` | Dataset001 | Earlier ablation script | — | No |
 
