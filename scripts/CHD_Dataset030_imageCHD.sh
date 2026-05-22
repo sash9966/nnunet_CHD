@@ -191,6 +191,25 @@ verify_preprocessing "${FULLRES}"
 verify_preprocessing "${LOWRES}"
 
 # ─────────────────────────────────────────────
+# Phase 0b — Build disease_map.json from diagnosis CSV
+# ─────────────────────────────────────────────
+# Required by all disease-conditioned trainers (FiLM, CrossAttn, AuxDiag).
+# Reads <dataset_raw>/imageCHD_diagnosis.csv (or any single .csv found there).
+# Writes ${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json
+# Safe to re-run: overwrites only the JSON, never the preprocessed data.
+if is_done "p0b_disease_map"; then
+    echo "[SKIP] Phase 0b: disease_map.json already built"
+else
+    echo "================================================================"
+    echo "Phase 0b: Build disease_map.json"
+    echo "================================================================"
+    python "${REPO}/scripts/make_disease_map.py" \
+        --dataset-id ${DATASET_ID} \
+        --csv-name imageCHD_dataset_info.xlsx
+    mark_done "p0b_disease_map"
+fi
+
+# ─────────────────────────────────────────────
 # Phase 1 — DA5 fullres baseline (Experiment 1)
 # ─────────────────────────────────────────────
 echo "================================================================"

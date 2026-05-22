@@ -181,6 +181,21 @@ fi
 verify_preprocessing "${FULLRES}"
 
 # ─────────────────────────────────────────────
+# Phase 0b — Build disease_map.json from diagnosis CSV
+# ─────────────────────────────────────────────
+if is_done "p0b_disease_map"; then
+    echo "[SKIP] Phase 0b: disease_map.json already built"
+else
+    echo "================================================================"
+    echo "Phase 0b: Build disease_map.json"
+    echo "================================================================"
+    python "${REPO}/scripts/make_disease_map.py" \
+        --dataset-id ${DATASET_ID} \
+        --csv-name imageCHD_dataset_info.xlsx
+    mark_done "p0b_disease_map"
+fi
+
+# ─────────────────────────────────────────────
 # Phase 1 — Training: 3 trainers x 5 folds
 # ─────────────────────────────────────────────
 echo "================================================================"
