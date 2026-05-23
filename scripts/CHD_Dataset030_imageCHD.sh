@@ -64,6 +64,7 @@ REPO="/scratch/users/sastocke/nnunet_CHD"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset030_imageCHD"
+SHARED_CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/shared"
 START_TS=$(date +%s)
 
 # Parallel arrays: lowres trainer[i] pairs with cascade trainer[i]
@@ -79,13 +80,19 @@ CASCADE_TRAINERS=(
 # ─────────────────────────────────────────────
 # 3.  Checkpoint helpers
 # ─────────────────────────────────────────────
-mkdir -p "${CKPT_DIR}"
+mkdir -p "${CKPT_DIR}" "${SHARED_CKPT_DIR}"
 
 # Strip nnUNetTrainer prefix and _200epochs suffix for compact checkpoint keys
 sk() { echo "$1" | sed 's/nnUNetTrainer//' | sed 's/_200epochs/200e/'; }
 
 mark_done() { touch "${CKPT_DIR}/${1}.done"; }
 is_done()   { [[ -f "${CKPT_DIR}/${1}.done" ]]; }
+
+# Shared markers: preprocessing is dataset-level, not per-script.
+# All Dataset030 scripts check the same shared dir so concurrent submissions
+# don't each independently trigger nnUNetv2_plan_and_preprocess.
+shared_mark_done() { touch "${SHARED_CKPT_DIR}/${1}.done"; }
+shared_is_done()   { [[ -f "${SHARED_CKPT_DIR}/${1}.done" ]]; }
 
 verify_preprocessing() {
     local cfg=$1
@@ -99,7 +106,7 @@ verify_preprocessing() {
         echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
         exit 1
     fi
-    n_prep=$(find "${prep_dir}" -maxdepth 1 \( -name "*.b2nd" -o -name "*.npy" \) 2>/dev/null | wc -l)
+    n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
     echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${prep_dir}"
     if [[ ${n_prep} -lt ${n_raw} ]]; then
         echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
@@ -174,8 +181,8 @@ print_banner
 # ─────────────────────────────────────────────
 # Phase 0 — Plan and preprocess
 # ─────────────────────────────────────────────
-if is_done "p0_preprocess"; then
-    echo "[SKIP] Phase 0: preprocess already done"
+if shared_is_done "p0_preprocess"; then
+    echo "[SKIP] Phase 0: preprocess already done (shared marker)"
 else
     echo "================================================================"
     echo "Phase 0: plan_and_preprocess — ${FULLRES} | ${LOWRES} | ${CASCADE}"
@@ -185,7 +192,7 @@ else
         -pl ${PLANNER} \
         -c ${FULLRES} ${LOWRES} ${CASCADE} \
         --verify_dataset_integrity
-    mark_done "p0_preprocess"
+    shared_mark_done "p0_preprocess"
 fi
 verify_preprocessing "${FULLRES}"
 verify_preprocessing "${LOWRES}"
@@ -197,8 +204,8 @@ verify_preprocessing "${LOWRES}"
 # Reads <dataset_raw>/imageCHD_diagnosis.csv (or any single .csv found there).
 # Writes ${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json
 # Safe to re-run: overwrites only the JSON, never the preprocessed data.
-if is_done "p0b_disease_map"; then
-    echo "[SKIP] Phase 0b: disease_map.json already built"
+if shared_is_done "p0b_disease_map"; then
+    echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
 else
     echo "================================================================"
     echo "Phase 0b: Build disease_map.json"
@@ -206,7 +213,7 @@ else
     python "${REPO}/scripts/make_disease_map.py" \
         --dataset-id ${DATASET_ID} \
         --csv-name imageCHD_dataset_info.xlsx
-    mark_done "p0b_disease_map"
+    shared_mark_done "p0b_disease_map"
 fi
 
 # ─────────────────────────────────────────────
