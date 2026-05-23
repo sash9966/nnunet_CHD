@@ -92,7 +92,7 @@ verify_preprocessing() {
         echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
         exit 1
     fi
-    n_prep=$(find "${prep_dir}" -maxdepth 1 \( -name "*.b2nd" -o -name "*.npy" \) 2>/dev/null | wc -l)
+    n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
     echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${prep_dir}"
     if [[ ${n_prep} -lt ${n_raw} ]]; then
         echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."

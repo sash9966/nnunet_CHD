@@ -119,9 +119,29 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `train_cascade_ablation.sh` | Dataset001 | Earlier ablation script | — | No |
 
 **Support scripts:**
+- `scripts/make_disease_map.py` — converts imageCHD diagnosis CSV → `disease_map.json`; called as Phase 0b in all Dataset030/001 scripts (see usage below)
 - `scripts/setup_cascade_predictions.py` — creates symlinks so cascade fullres trainers find lowres predictions when trainer class names differ
 - `scripts/make_presentation.py` — generates `docs/CHD_TopologyLoss_Presentation.pptx`
 - `scripts/test_curriculum_class_weights.py` — unit test for curriculum weights
+
+**make_disease_map.py usage:**
+```bash
+# Via dataset ID (uses $nnUNet_raw / $nnUNet_preprocessed env vars):
+python scripts/make_disease_map.py --dataset-id 30
+python scripts/make_disease_map.py --dataset-id 1
+
+# Explicit paths:
+python scripts/make_disease_map.py \
+    --csv  $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_diagnosis.csv \
+    --out  $nnUNet_preprocessed/Dataset030_imageCHD_HU/disease_map.json
+
+# Dry-run (inspect without writing):
+python scripts/make_disease_map.py --dataset-id 30 --dry-run
+```
+Supported CSV layouts:
+- **Binary columns**: one column per disease (`HLHS,ASD,VSD,AVSD,DORV,PuA,ToF,TGA`), 0/1 values
+- **String diagnosis column**: comma-separated tags per row (`"ASD,VSD"`)
+- **Integer type column**: imageCHD integer class ID (0=Normal, 1=HLHS, … 8=TGA)
 
 ### SLURM output files
 SLURM logs go to: `/scratch/users/sastocke/nnunet_CHD/logs/<job-name>_<jobid>.out/.err`  
