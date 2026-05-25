@@ -222,7 +222,7 @@ fi
 echo "================================================================"
 echo "Phase 1: Fullres DA5 baseline — 5 folds"
 echo "================================================================"
-for FOLD in 0 1 2 3 4; do
+for FOLD in 0; do
     KEY="p1_fullres_$(sk nnUNetTrainerDA5_200epochs)_fold${FOLD}"
     if is_done "${KEY}"; then
         echo "[SKIP] ${KEY}"
@@ -241,7 +241,7 @@ echo "================================================================"
 echo "Phase 2: Lowres training — 2 trainers x 5 folds"
 echo "================================================================"
 for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
-    for FOLD in 0 1 2 3 4; do
+    for FOLD in 0; do
         KEY="p2_lowres_$(sk ${LR_TRAINER})_fold${FOLD}"
         if is_done "${KEY}"; then
             echo "[SKIP] ${KEY}"
@@ -271,7 +271,7 @@ for i in "${!LOWRES_TRAINERS[@]}"; do
             --cascade_trainer "${CASCADE_TRAINERS[$i]}" \
             --dataset         "${DATASET_NAME}" \
             --plans           "${PLANS}" \
-            --folds           0 1 2 3 4
+            --folds           0
         mark_done "${KEY}"
     fi
 done
@@ -283,7 +283,7 @@ echo "================================================================"
 echo "Phase 4: Cascade fullres training — 2 trainers x 5 folds"
 echo "================================================================"
 for CASCADE_TRAINER in "${CASCADE_TRAINERS[@]}"; do
-    for FOLD in 0 1 2 3 4; do
+    for FOLD in 0; do
         KEY="p4_cascade_$(sk ${CASCADE_TRAINER})_fold${FOLD}"
         if is_done "${KEY}"; then
             echo "[SKIP] ${KEY}"
@@ -312,7 +312,7 @@ else
     nnUNetv2_predict \
         -i "${IN_DIR}" -o "${PRED_BASE}/DA5_fullres" \
         -d ${DATASET_ID} -c ${FULLRES} \
-        -f 0 1 2 3 4 \
+        -f 0 \
         -tr nnUNetTrainerDA5_200epochs -p ${PLANS}
     mark_done "p5_infer_fullres"
 fi
@@ -333,7 +333,7 @@ for i in "${!LOWRES_TRAINERS[@]}"; do
         nnUNetv2_predict \
             -i "${IN_DIR}" -o "${LR_PRED}" \
             -d ${DATASET_ID} -c ${LOWRES} \
-            -f 0 1 2 3 4 \
+            -f 0 \
             -tr ${LR_TRAINER} -p ${PLANS}
         mark_done "${KEY_LR}"
     fi
@@ -346,7 +346,7 @@ for i in "${!LOWRES_TRAINERS[@]}"; do
         nnUNetv2_predict \
             -i "${IN_DIR}" -o "${CASCADE_PRED}" \
             -d ${DATASET_ID} -c ${CASCADE} \
-            -f 0 1 2 3 4 \
+            -f 0 \
             -tr ${CASCADE_TRAINER} -p ${PLANS} \
             -prev_stage_predictions "${LR_PRED}"
         mark_done "${KEY_CASCADE}"

@@ -212,7 +212,7 @@ echo "================================================================"
 echo "Phase 1: Fullres training — ${#TRAINERS[@]} trainers x 5 folds"
 echo "================================================================"
 for TRAINER in "${TRAINERS[@]}"; do
-    for FOLD in 0 1 2 3 4; do
+    for FOLD in 0; do
         KEY="p1_$(sk ${TRAINER})_fold${FOLD}"
         if is_done "${KEY}"; then
             echo "[SKIP] ${KEY}"
@@ -244,7 +244,7 @@ for TRAINER in "${TRAINERS[@]}"; do
         nnUNetv2_predict \
             -i "${IN_DIR}" -o "${OUT_DIR}" \
             -d ${DATASET_ID} -c ${FULLRES} \
-            -f 0 1 2 3 4 \
+            -f 0 \
             -tr ${TRAINER} -p ${PLANS}
         mark_done "${KEY}"
     fi
