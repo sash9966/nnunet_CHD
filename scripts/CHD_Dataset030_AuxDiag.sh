@@ -219,26 +219,32 @@ for TRAINER in "${TRAINERS[@]}"; do
 done
 
 # ─────────────────────────────────────────────
-# Phase 2 — Inference on test set (5-fold ensemble)
+# Phase 2 — Inference on test set (fold 0)
 # ─────────────────────────────────────────────
+# Uses predict_disease_conditioned.py for all trainers.
+# - DA5AuxDiag / DA5AuxDiagTopo: no inference_config.json → auto-falls
+#   back to standard nnUNetv2_predict (aux head is training-only).
+# - DA5FiLMAuxDiag: has inference_config.json + disease_map.json in
+#   model folder → per-case disease vector set before each prediction.
 echo "================================================================"
-echo "Phase 2: Inference on test set — 5-fold ensemble"
+echo "Phase 2: Inference on test set — fold 0"
 echo "================================================================"
 mkdir -p "${PRED_BASE}"
 
 for TRAINER in "${TRAINERS[@]}"; do
     KEY="p2_infer_$(sk ${TRAINER})"
     OUT_DIR="${PRED_BASE}/$(sk ${TRAINER})"
+    MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
     mkdir -p "${OUT_DIR}"
     if is_done "${KEY}"; then
         echo "[SKIP] ${KEY}"
     else
         echo "--- ${KEY} ---"
-        nnUNetv2_predict \
-            -i "${IN_DIR}" -o "${OUT_DIR}" \
-            -d ${DATASET_ID} -c ${FULLRES} \
-            -f 0 \
-            -tr ${TRAINER} -p ${PLANS}
+        python -m nnunetv2.inference.predict_disease_conditioned \
+            -i "${IN_DIR}" \
+            -o "${OUT_DIR}" \
+            -m "${MODEL_DIR}" \
+            -f 0
         mark_done "${KEY}"
     fi
 done

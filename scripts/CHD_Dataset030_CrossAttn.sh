@@ -226,26 +226,32 @@ for TRAINER in "${TRAINERS[@]}"; do
 done
 
 # ─────────────────────────────────────────────
-# Phase 2 — Inference on test set (5-fold ensemble)
+# Phase 2 — Inference on test set (fold 0)
 # ─────────────────────────────────────────────
+# All CrossAttn trainers need per-case disease vectors during inference
+# (cross-attention layers receive disease-token embeddings). Using
+# predict_disease_conditioned.py which auto-loads disease_map.json from
+# the model folder (copied there at train start) and sets the disease
+# vector before each case.
 echo "================================================================"
-echo "Phase 2: Inference on test set — 5-fold ensemble"
+echo "Phase 2: Inference on test set — fold 0"
 echo "================================================================"
 mkdir -p "${PRED_BASE}"
 
 for TRAINER in "${TRAINERS[@]}"; do
     KEY="p2_infer_$(sk ${TRAINER})"
     OUT_DIR="${PRED_BASE}/$(sk ${TRAINER})"
+    MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
     mkdir -p "${OUT_DIR}"
     if is_done "${KEY}"; then
         echo "[SKIP] ${KEY}"
     else
         echo "--- ${KEY} ---"
-        nnUNetv2_predict \
-            -i "${IN_DIR}" -o "${OUT_DIR}" \
-            -d ${DATASET_ID} -c ${FULLRES} \
-            -f 0 \
-            -tr ${TRAINER} -p ${PLANS}
+        python -m nnunetv2.inference.predict_disease_conditioned \
+            -i "${IN_DIR}" \
+            -o "${OUT_DIR}" \
+            -m "${MODEL_DIR}" \
+            -f 0
         mark_done "${KEY}"
     fi
 done
