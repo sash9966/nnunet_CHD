@@ -1,21 +1,32 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_Dataset030_imageCHD.sh
-#  Dataset030_imageCHD_HU — 3 experiments, 5-fold, 200 epochs
+#  Dataset030_imageCHD_HU — 3 experiments, fold 0, 200 epochs
 #
 #  Experiments
 #    1. DA5 fullres baseline          (3d_fullres only)
 #    2. Cascade baseline              (DA5_200e lowres  → CascadeFullresBaseline_200e)
 #    3. Cascade topology              (DA5CascadeTopo_200e → CascadeFullresTopo_200e)
 #
-#  Topology loss (soft-clDice) applied to AO and PA labels.
-#  Prerequisite: Dataset030 dataset.json must name those labels "AO" and "PA".
+#  Execution order (inference immediately follows its training phase so
+#  partial runs still yield usable test-set predictions):
+#
+#    Phase 0   — plan_and_preprocess (all 3 configs)
+#    Phase 0b  — build disease_map.json
+#    Phase 1   — train fullres DA5 (fold 0)
+#    Phase 1b  — infer fullres DA5 on imagesTs          ← first payoff
+#    Phase 2   — train lowres (2 trainers, fold 0)
+#    Phase 2b  — infer lowres on imagesTs               ← used as prev_stage below
+#    Phase 2.5 — generate predicted_next_stage for ALL training cases
+#    Phase 3   — symlink predicted_next_stage into cascade trainer dirs
+#    Phase 4   — train cascade fullres (2 trainers, fold 0)
+#    Phase 4b  — infer cascade fullres on imagesTs      ← second payoff
 #
 #  RESUME SUPPORT
-#    Each training run creates a .done marker. On resubmission the script
-#    skips any step whose marker already exists. nnUNet itself resumes
-#    from its own checkpoint if training was mid-epoch when interrupted.
-#    Checkpoint dir: ${nnUNet_results}/Dataset030_imageCHD_HU/.checkpoints/
+#    Each step writes a .done marker. On resubmission the script skips
+#    completed steps. nnUNet resumes from its own checkpoint if training
+#    was interrupted mid-epoch.
+#    Checkpoint dir: ${nnUNet_results}/Dataset030_imageCHD_HU/.checkpoints/CHD_Dataset030_imageCHD/
 #
 #  Before first submission:
 #    mkdir -p /scratch/users/sastocke/nnunet_CHD/logs
@@ -88,9 +99,8 @@ sk() { echo "$1" | sed 's/nnUNetTrainer//' | sed 's/_200epochs/200e/'; }
 mark_done() { touch "${CKPT_DIR}/${1}.done"; }
 is_done()   { [[ -f "${CKPT_DIR}/${1}.done" ]]; }
 
-# Shared markers: preprocessing is dataset-level, not per-script.
-# All Dataset030 scripts check the same shared dir so concurrent submissions
-# don't each independently trigger nnUNetv2_plan_and_preprocess.
+# Shared markers: preprocessing and disease_map are dataset-level steps.
+# All Dataset030 scripts share the same dir to avoid concurrent re-runs.
 shared_mark_done() { touch "${SHARED_CKPT_DIR}/${1}.done"; }
 shared_is_done()   { [[ -f "${SHARED_CKPT_DIR}/${1}.done" ]]; }
 
@@ -103,7 +113,6 @@ verify_preprocessing() {
         echo "ERROR: No preprocessed directory found for ${cfg}."
         echo "  Looked in: ${nnUNet_preprocessed}/${DATASET_NAME}/*_${cfg}"
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
-        echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
         exit 1
     fi
     n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
@@ -111,7 +120,6 @@ verify_preprocessing() {
     if [[ ${n_prep} -lt ${n_raw} ]]; then
         echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
-        echo "  Then delete: ${CKPT_DIR}/p0_preprocess.done and resubmit."
         exit 1
     fi
 }
@@ -129,12 +137,12 @@ print_banner() {
     printf "║  %-66s ║\n" "Dataset    : ${DATASET_NAME}  (ID=${DATASET_ID})"
     printf "║  %-66s ║\n" "Plans      : ${PLANS}"
     printf "║  %-66s ║\n" "Configs    : ${FULLRES} | ${LOWRES} | ${CASCADE}"
-    printf "║  %-66s ║\n" "Folds      : 0 1 2 3 4  (5-fold ensemble inference)"
-    printf "║  %-66s ║\n" "Epochs     : 200  (via _200epochs trainer variants)"
+    printf "║  %-66s ║\n" "Fold       : 0 only"
+    printf "║  %-66s ║\n" "Epochs     : 200"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Experiment 1 — fullres:  nnUNetTrainerDA5_200epochs"
-    printf "║  %-66s ║\n" "Experiment 2 — cascade:  DA5_200e -> CascadeFullresBaseline_200e"
-    printf "║  %-66s ║\n" "Experiment 3 — cascade:  DA5CascadeTopo_200e -> CascadeFullresTopo_200e"
+    printf "║  %-66s ║\n" "Exp 1  DA5 fullres         train → infer"
+    printf "║  %-66s ║\n" "Exp 2  DA5 lowres          train → infer → cascade train → infer"
+    printf "║  %-66s ║\n" "Exp 3  DA5CascadeTopo      train → infer → cascade train → infer"
     printf "║  %-66s ║\n" ""
     printf "║  %-66s ║\n" "Raw data   : ${IN_DIR}"
     printf "║  %-66s ║\n" "Results    : ${nnUNet_results}/${DATASET_NAME}"
@@ -142,7 +150,6 @@ print_banner() {
     printf "║  %-66s ║\n" "Checkpoint : ${CKPT_DIR}"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo ""
-    # Print existing checkpoint status so you can see what already ran
     echo "  Completed steps (from previous runs, if any):"
     ls "${CKPT_DIR}/"*.done 2>/dev/null \
         | xargs -I{} basename {} .done \
@@ -167,9 +174,10 @@ print_footer() {
     printf "║  %-66s ║\n" ""
     printf "║  %-66s ║\n" "Inference results:"
     printf "║  %-66s ║\n" "  ${PRED_BASE}/DA5_fullres"
-    printf "║  %-66s ║\n" "  ${PRED_BASE}/nnUNetTrainerDA5CascadeFullresBaseline_200epochs"
-    printf "║  %-66s ║\n" "  ${PRED_BASE}/nnUNetTrainerDA5CascadeFullresTopo_200epochs"
-    printf "║  %-66s ║\n" "Checkpoint : ${CKPT_DIR}"
+    printf "║  %-66s ║\n" "  ${PRED_BASE}/DA5200e_lowres"
+    printf "║  %-66s ║\n" "  ${PRED_BASE}/DA5CascadeFullresBaseline200e"
+    printf "║  %-66s ║\n" "  ${PRED_BASE}/DA5CascadeTopo200e_lowres"
+    printf "║  %-66s ║\n" "  ${PRED_BASE}/DA5CascadeFullresTopo200e"
     echo "╚══════════════════════════════════════════════════════════════════╝"
 }
 
@@ -177,6 +185,7 @@ print_footer() {
 # START
 # ─────────────────────────────────────────────
 print_banner
+mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
 # Phase 0 — Plan and preprocess
@@ -198,12 +207,8 @@ verify_preprocessing "${FULLRES}"
 verify_preprocessing "${LOWRES}"
 
 # ─────────────────────────────────────────────
-# Phase 0b — Build disease_map.json from diagnosis CSV
+# Phase 0b — Build disease_map.json
 # ─────────────────────────────────────────────
-# Required by all disease-conditioned trainers (FiLM, CrossAttn, AuxDiag).
-# Reads <dataset_raw>/imageCHD_diagnosis.csv (or any single .csv found there).
-# Writes ${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json
-# Safe to re-run: overwrites only the JSON, never the preprocessed data.
 if shared_is_done "p0b_disease_map"; then
     echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
 else
@@ -217,55 +222,92 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# Phase 1 — DA5 fullres baseline (Experiment 1)
+# Phase 1 — DA5 fullres training (Experiment 1)
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "Phase 1: Fullres DA5 baseline — 5 folds"
+echo "Phase 1: Fullres DA5 training — fold 0"
 echo "================================================================"
-for FOLD in 0; do
-    KEY="p1_fullres_$(sk nnUNetTrainerDA5_200epochs)_fold${FOLD}"
-    if is_done "${KEY}"; then
-        echo "[SKIP] ${KEY}"
-    else
-        echo "--- ${KEY} ---"
-        nnUNetv2_train ${DATASET_ID} ${FULLRES} ${FOLD} \
-            -tr nnUNetTrainerDA5_200epochs -p ${PLANS} --npz
-        mark_done "${KEY}"
-    fi
-done
+KEY="p1_fullres_DA5200e_fold0"
+if is_done "${KEY}"; then
+    echo "[SKIP] ${KEY}"
+else
+    echo "--- ${KEY} ---"
+    nnUNetv2_train ${DATASET_ID} ${FULLRES} 0 \
+        -tr nnUNetTrainerDA5_200epochs -p ${PLANS} --npz
+    mark_done "${KEY}"
+fi
+
+# ─────────────────────────────────────────────
+# Phase 1b — Inference: fullres DA5 on test set
+# ─────────────────────────────────────────────
+echo "================================================================"
+echo "Phase 1b: Inference — fullres DA5 on imagesTs"
+echo "================================================================"
+if is_done "p1b_infer_fullres"; then
+    echo "[SKIP] p1b_infer_fullres"
+else
+    echo "--- p1b_infer_fullres ---"
+    mkdir -p "${PRED_BASE}/DA5_fullres"
+    nnUNetv2_predict \
+        -i "${IN_DIR}" -o "${PRED_BASE}/DA5_fullres" \
+        -d ${DATASET_ID} -c ${FULLRES} \
+        -f 0 \
+        -tr nnUNetTrainerDA5_200epochs -p ${PLANS}
+    mark_done "p1b_infer_fullres"
+fi
 
 # ─────────────────────────────────────────────
 # Phase 2 — Lowres training (Experiments 2 and 3)
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "Phase 2: Lowres training — 2 trainers x 5 folds"
+echo "Phase 2: Lowres training — 2 trainers, fold 0"
 echo "================================================================"
 for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
-    for FOLD in 0; do
-        KEY="p2_lowres_$(sk ${LR_TRAINER})_fold${FOLD}"
-        if is_done "${KEY}"; then
-            echo "[SKIP] ${KEY}"
-        else
-            echo "--- ${KEY} ---"
-            nnUNetv2_train ${DATASET_ID} ${LOWRES} ${FOLD} \
-                -tr ${LR_TRAINER} -p ${PLANS} --npz
-            mark_done "${KEY}"
-        fi
-    done
+    KEY="p2_lowres_$(sk ${LR_TRAINER})_fold0"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
+    else
+        echo "--- ${KEY} ---"
+        nnUNetv2_train ${DATASET_ID} ${LOWRES} 0 \
+            -tr ${LR_TRAINER} -p ${PLANS} --npz
+        mark_done "${KEY}"
+    fi
 done
 
 # ─────────────────────────────────────────────
-# Phase 2.5 — Generate cascade predictions for ALL training cases
+# Phase 2b — Inference: lowres on test set
+# (stored now; reused as prev_stage in Phase 4b)
 # ─────────────────────────────────────────────
-# perform_actual_validation() only saves predicted_next_stage for the
-# ~7 fold-0 val cases.  The cascade-fullres trainer needs predictions
-# for ALL 73 training+val cases, so we run this fill-in step.
-# Already-predicted cases are skipped; safe to re-run.
 echo "================================================================"
-echo "Phase 2.5: Generate cascade next-stage preds for all cases"
+echo "Phase 2b: Inference — lowres trainers on imagesTs"
 echo "================================================================"
 for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
-    KEY="p2b_cascadepreds_$(sk ${LR_TRAINER})_fold0"
+    LR_PRED="${PRED_BASE}/$(sk ${LR_TRAINER})_lowres"
+    KEY="p2b_infer_lowres_$(sk ${LR_TRAINER})"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
+    else
+        echo "--- ${KEY} ---"
+        mkdir -p "${LR_PRED}"
+        nnUNetv2_predict \
+            -i "${IN_DIR}" -o "${LR_PRED}" \
+            -d ${DATASET_ID} -c ${LOWRES} \
+            -f 0 \
+            -tr ${LR_TRAINER} -p ${PLANS}
+        mark_done "${KEY}"
+    fi
+done
+
+# ─────────────────────────────────────────────
+# Phase 2.5 — Generate predicted_next_stage for ALL training cases
+# (perform_actual_validation only saves the ~7 fold-0 val cases;
+#  cascade-fullres training needs all 73 training+val cases)
+# ─────────────────────────────────────────────
+echo "================================================================"
+echo "Phase 2.5: Generate cascade next-stage preds for all training cases"
+echo "================================================================"
+for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
+    KEY="p2c_cascadepreds_$(sk ${LR_TRAINER})_fold0"
     if is_done "${KEY}"; then
         echo "[SKIP] ${KEY}"
     else
@@ -280,7 +322,7 @@ for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
 done
 
 # ─────────────────────────────────────────────
-# Phase 3 — Symlink predicted_next_stage
+# Phase 3 — Symlink predicted_next_stage into cascade trainer dirs
 # ─────────────────────────────────────────────
 echo "================================================================"
 echo "Phase 3: Symlink lowres predictions into cascade directories"
@@ -305,76 +347,45 @@ done
 # Phase 4 — Cascade fullres training (Experiments 2 and 3)
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "Phase 4: Cascade fullres training — 2 trainers x 5 folds"
+echo "Phase 4: Cascade fullres training — 2 trainers, fold 0"
 echo "================================================================"
 for CASCADE_TRAINER in "${CASCADE_TRAINERS[@]}"; do
-    for FOLD in 0; do
-        KEY="p4_cascade_$(sk ${CASCADE_TRAINER})_fold${FOLD}"
-        if is_done "${KEY}"; then
-            echo "[SKIP] ${KEY}"
-        else
-            echo "--- ${KEY} ---"
-            nnUNetv2_train ${DATASET_ID} ${CASCADE} ${FOLD} \
-                -tr ${CASCADE_TRAINER} -p ${PLANS} --npz
-            mark_done "${KEY}"
-        fi
-    done
+    KEY="p4_cascade_$(sk ${CASCADE_TRAINER})_fold0"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
+    else
+        echo "--- ${KEY} ---"
+        nnUNetv2_train ${DATASET_ID} ${CASCADE} 0 \
+            -tr ${CASCADE_TRAINER} -p ${PLANS} --npz
+        mark_done "${KEY}"
+    fi
 done
 
 # ─────────────────────────────────────────────
-# Phase 5 — Inference on test set (5-fold ensemble)
+# Phase 4b — Inference: cascade fullres on test set
+# (uses lowres test predictions from Phase 2b as prev_stage)
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "Phase 5: Inference on test set — 5-fold ensemble"
+echo "Phase 4b: Inference — cascade fullres on imagesTs"
 echo "================================================================"
-mkdir -p "${PRED_BASE}"
-
-# Experiment 1: fullres DA5
-if is_done "p5_infer_fullres"; then
-    echo "[SKIP] p5_infer_fullres"
-else
-    echo "--- p5_infer_fullres ---"
-    nnUNetv2_predict \
-        -i "${IN_DIR}" -o "${PRED_BASE}/DA5_fullres" \
-        -d ${DATASET_ID} -c ${FULLRES} \
-        -f 0 \
-        -tr nnUNetTrainerDA5_200epochs -p ${PLANS}
-    mark_done "p5_infer_fullres"
-fi
-
-# Experiments 2 and 3: cascade (lowres predict → cascade predict)
-for i in "${!LOWRES_TRAINERS[@]}"; do
-    LR_TRAINER="${LOWRES_TRAINERS[$i]}"
+for i in "${!CASCADE_TRAINERS[@]}"; do
     CASCADE_TRAINER="${CASCADE_TRAINERS[$i]}"
+    LR_TRAINER="${LOWRES_TRAINERS[$i]}"
     LR_PRED="${PRED_BASE}/$(sk ${LR_TRAINER})_lowres"
     CASCADE_PRED="${PRED_BASE}/$(sk ${CASCADE_TRAINER})"
-    mkdir -p "${LR_PRED}" "${CASCADE_PRED}"
-
-    KEY_LR="p5_infer_lowres_$(sk ${LR_TRAINER})"
-    if is_done "${KEY_LR}"; then
-        echo "[SKIP] ${KEY_LR}"
+    KEY="p4b_infer_cascade_$(sk ${CASCADE_TRAINER})"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
     else
-        echo "--- ${KEY_LR} ---"
-        nnUNetv2_predict \
-            -i "${IN_DIR}" -o "${LR_PRED}" \
-            -d ${DATASET_ID} -c ${LOWRES} \
-            -f 0 \
-            -tr ${LR_TRAINER} -p ${PLANS}
-        mark_done "${KEY_LR}"
-    fi
-
-    KEY_CASCADE="p5_infer_cascade_$(sk ${CASCADE_TRAINER})"
-    if is_done "${KEY_CASCADE}"; then
-        echo "[SKIP] ${KEY_CASCADE}"
-    else
-        echo "--- ${KEY_CASCADE} ---"
+        echo "--- ${KEY} ---"
+        mkdir -p "${CASCADE_PRED}"
         nnUNetv2_predict \
             -i "${IN_DIR}" -o "${CASCADE_PRED}" \
             -d ${DATASET_ID} -c ${CASCADE} \
             -f 0 \
             -tr ${CASCADE_TRAINER} -p ${PLANS} \
             -prev_stage_predictions "${LR_PRED}"
-        mark_done "${KEY_CASCADE}"
+        mark_done "${KEY}"
     fi
 done
 
