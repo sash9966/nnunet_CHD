@@ -121,6 +121,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 **Support scripts:**
 - `scripts/make_disease_map.py` — converts imageCHD diagnosis CSV → `disease_map.json`; called as Phase 0b in all Dataset030/001 scripts (see usage below)
 - `scripts/setup_cascade_predictions.py` — creates symlinks so cascade fullres trainers find lowres predictions when trainer class names differ
+- `scripts/generate_cascade_preds.py` — runs a trained fold-0 lowres model over ALL training+val cases and saves `.b2nd` predictions to `predicted_next_stage/3d_cascade_fullres/`; needed because `perform_actual_validation` only saves the ~7 fold-0 val cases when training fold 0 only; called as Phase 2.5 in `CHD_Dataset030_imageCHD.sh`
 - `scripts/make_presentation.py` — generates `docs/CHD_TopologyLoss_Presentation.pptx`
 - `scripts/test_curriculum_class_weights.py` — unit test for curriculum weights
 

@@ -255,6 +255,31 @@ for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
 done
 
 # ─────────────────────────────────────────────
+# Phase 2.5 — Generate cascade predictions for ALL training cases
+# ─────────────────────────────────────────────
+# perform_actual_validation() only saves predicted_next_stage for the
+# ~7 fold-0 val cases.  The cascade-fullres trainer needs predictions
+# for ALL 73 training+val cases, so we run this fill-in step.
+# Already-predicted cases are skipped; safe to re-run.
+echo "================================================================"
+echo "Phase 2.5: Generate cascade next-stage preds for all cases"
+echo "================================================================"
+for LR_TRAINER in "${LOWRES_TRAINERS[@]}"; do
+    KEY="p2b_cascadepreds_$(sk ${LR_TRAINER})_fold0"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
+    else
+        echo "--- ${KEY} ---"
+        python "${REPO}/scripts/generate_cascade_preds.py" \
+            --dataset-id ${DATASET_ID} \
+            --lowres-trainer ${LR_TRAINER} \
+            --plans ${PLANS} \
+            --fold 0
+        mark_done "${KEY}"
+    fi
+done
+
+# ─────────────────────────────────────────────
 # Phase 3 — Symlink predicted_next_stage
 # ─────────────────────────────────────────────
 echo "================================================================"
