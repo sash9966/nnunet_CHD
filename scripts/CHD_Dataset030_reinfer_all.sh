@@ -18,7 +18,7 @@
 #    mkdir -p /scratch/users/sastocke/nnunet_CHD/logs
 # =============================================================================
 #SBATCH --job-name=D030-reinfer-all
-#SBATCH --partition=bioe
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
