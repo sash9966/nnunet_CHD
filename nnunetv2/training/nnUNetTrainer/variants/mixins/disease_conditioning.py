@@ -202,6 +202,7 @@ class DiseaseConditioningMixin(TrainerMixin):
             return None
         vecs = []
         for case_id in batch_keys:
+            case_id = case_id.removesuffix("_image")  # blosc2 identifiers include _image suffix
             if case_id not in self.disease_map:
                 raise KeyError(
                     f"Case '{case_id}' not found in disease_map.json. "
