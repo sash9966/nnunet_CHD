@@ -102,6 +102,32 @@ else
     echo "[DONE] ${KEY}"
 fi
 
+# Helper: run predict_disease_conditioned, skipping if no checkpoint exists.
+run_conditioned_infer() {
+    local key="$1" trainer="$2"
+    local model_dir="${nnUNet_results}/${DATASET_NAME}/${trainer}__${PLANS}__${FULLRES}"
+    local out_dir="${PRED_BASE}/$(sk ${trainer})"
+    local ckpt="${model_dir}/fold_0/checkpoint_final.pth"
+
+    if is_done "${key}"; then
+        echo "[SKIP] ${key}"
+        return
+    fi
+    if [[ ! -f "${ckpt}" ]]; then
+        echo "[WARN] ${key}: no checkpoint at ${ckpt} — training not finished, skipping"
+        return
+    fi
+    echo "--- ${key} ---"
+    mkdir -p "${out_dir}"
+    python -m nnunetv2.inference.predict_disease_conditioned \
+        -i "${IN_DIR}" \
+        -o "${out_dir}" \
+        -m "${model_dir}" \
+        -f 0
+    mark_done "${key}"
+    echo "[DONE] ${key}"
+}
+
 # ─────────────────────────────────────────────
 # 2. AuxDiag — predict_disease_conditioned
 #    DA5AuxDiag / DA5AuxDiagTopo: no inference_config.json → auto-fallback
@@ -110,29 +136,9 @@ fi
 echo "================================================================"
 echo "2. AuxDiag trainers (disease-conditioned where applicable)"
 echo "================================================================"
-AUXDIAG_TRAINERS=(
-    "nnUNetTrainerDA5AuxDiag_200epochs"
-    "nnUNetTrainerDA5AuxDiagTopo_200epochs"
-    "nnUNetTrainerDA5FiLMAuxDiag_200epochs"
-)
-for TRAINER in "${AUXDIAG_TRAINERS[@]}"; do
-    KEY="auxdiag_$(sk ${TRAINER})"
-    OUT_DIR="${PRED_BASE}/$(sk ${TRAINER})"
-    MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
-    if is_done "${KEY}"; then
-        echo "[SKIP] ${KEY}"
-        continue
-    fi
-    echo "--- ${KEY} ---"
-    mkdir -p "${OUT_DIR}"
-    python -m nnunetv2.inference.predict_disease_conditioned \
-        -i "${IN_DIR}" \
-        -o "${OUT_DIR}" \
-        -m "${MODEL_DIR}" \
-        -f 0
-    mark_done "${KEY}"
-    echo "[DONE] ${KEY}"
-done
+run_conditioned_infer "auxdiag_DA5AuxDiag200e"        "nnUNetTrainerDA5AuxDiag_200epochs"
+run_conditioned_infer "auxdiag_DA5AuxDiagTopo200e"    "nnUNetTrainerDA5AuxDiagTopo_200epochs"
+run_conditioned_infer "auxdiag_DA5FiLMAuxDiag200e"    "nnUNetTrainerDA5FiLMAuxDiag_200epochs"
 
 # ─────────────────────────────────────────────
 # 3. CrossAttn — predict_disease_conditioned (all need disease vecs)
@@ -140,29 +146,9 @@ done
 echo "================================================================"
 echo "3. CrossAttn trainers (per-case disease vectors)"
 echo "================================================================"
-CROSSATTN_TRAINERS=(
-    "nnUNetTrainerDA5CrossAttn_200epochs"
-    "nnUNetTrainerDA5CrossAttnTopo_200epochs"
-    "nnUNetTrainerDA5AuxDiagCrossAttn_200epochs"
-)
-for TRAINER in "${CROSSATTN_TRAINERS[@]}"; do
-    KEY="crossattn_$(sk ${TRAINER})"
-    OUT_DIR="${PRED_BASE}/$(sk ${TRAINER})"
-    MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
-    if is_done "${KEY}"; then
-        echo "[SKIP] ${KEY}"
-        continue
-    fi
-    echo "--- ${KEY} ---"
-    mkdir -p "${OUT_DIR}"
-    python -m nnunetv2.inference.predict_disease_conditioned \
-        -i "${IN_DIR}" \
-        -o "${OUT_DIR}" \
-        -m "${MODEL_DIR}" \
-        -f 0
-    mark_done "${KEY}"
-    echo "[DONE] ${KEY}"
-done
+run_conditioned_infer "crossattn_DA5CrossAttn200e"         "nnUNetTrainerDA5CrossAttn_200epochs"
+run_conditioned_infer "crossattn_DA5CrossAttnTopo200e"     "nnUNetTrainerDA5CrossAttnTopo_200epochs"
+run_conditioned_infer "crossattn_DA5AuxDiagCrossAttn200e"  "nnUNetTrainerDA5AuxDiagCrossAttn_200epochs"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
