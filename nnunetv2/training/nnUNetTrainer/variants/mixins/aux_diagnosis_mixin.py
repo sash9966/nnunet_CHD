@@ -88,6 +88,7 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         self.diagnosis_embedding: Optional[torch.Tensor] = None
         # Accumulated per epoch for logging
         self._aux_loss_accum: List[float] = []
+        self._aux_pred_probs_accum: List[torch.Tensor] = []
         # Separate disease map (only loaded when DiseaseConditioningMixin absent)
         self._aux_disease_map: Optional[Dict[str, List[int]]] = None
 
@@ -165,6 +166,11 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
 
         self._aux_loss_accum.append(aux_loss.item())
 
+        # Accumulate per-class mean sigmoid probability for progress plot
+        with torch.no_grad():
+            probs = torch.sigmoid(logits.detach().float()).mean(dim=0).cpu()
+        self._aux_pred_probs_accum.append(probs)
+
         return extra + weighted
 
     # ── Hook: extra param group for the diagnosis head ───────────────────
@@ -196,7 +202,6 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         super().mixin_on_train_epoch_end(train_outputs)
         if self._aux_loss_accum:
             avg_aux = sum(self._aux_loss_accum) / len(self._aux_loss_accum)
-            # Approximate seg contribution from train_outputs
             avg_seg = float(
                 sum(o["loss"] for o in train_outputs) / len(train_outputs)
             ) if train_outputs else float("nan")
@@ -206,7 +211,20 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
                 f"aux_bce={avg_aux:.4f}  "
                 f"aux_weighted={self.aux_loss_weight * avg_aux:.4f}"
             )
+
+            # Log to logger for progress.png panel
+            mean_probs = (
+                torch.stack(self._aux_pred_probs_accum).mean(dim=0).tolist()
+                if self._aux_pred_probs_accum else []
+            )
+            self.logger.log(
+                'aux_diagnosis',
+                {'bce': avg_aux, 'probs': mean_probs},
+                self.current_epoch,
+            )
+
             self._aux_loss_accum.clear()
+            self._aux_pred_probs_accum.clear()
 
     # ── Private helpers ───────────────────────────────────────────────────
 

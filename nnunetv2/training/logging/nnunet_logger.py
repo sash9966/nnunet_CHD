@@ -71,7 +71,9 @@ class nnUNetLogger(object):
 
         has_film = ('film_magnitudes' in self.my_fantastic_logging
                     and len(self.my_fantastic_logging['film_magnitudes']) > 0)
-        n_plots = 5 if has_film else 4
+        has_aux = ('aux_diagnosis' in self.my_fantastic_logging
+                   and len(self.my_fantastic_logging['aux_diagnosis']) > 0)
+        n_plots = 4 + int(has_film) + int(has_aux)
 
         sns.set(font_scale=2.5)
         fig, ax_all = plt.subplots(n_plots, 1, figsize=(30, 18 * n_plots))
@@ -177,6 +179,43 @@ class nnUNetLogger(object):
             ax.set_title("FiLM modulation magnitudes (should grow > 0.01 if conditioning is active)")
             ax.legend(loc='upper left', fontsize=12, ncol=2)
             ax.set_ylim(bottom=0)
+
+        # Auxiliary diagnosis head diagnostic (only for AuxDiag trainers)
+        if has_aux:
+            ax = ax_all[4 + int(has_film)]
+            aux_data = self.my_fantastic_logging['aux_diagnosis']
+            aux_epoch = min(len(aux_data), epoch + 1)
+            aux_x = list(range(aux_epoch))
+
+            # Left axis: BCE loss
+            bce_vals = [aux_data[e]['bce'] for e in range(aux_epoch)]
+            ax.plot(aux_x, bce_vals, color='black', ls='-', linewidth=3,
+                    label='aux BCE loss')
+            ax.set_xlabel("epoch")
+            ax.set_ylabel("aux BCE loss")
+            ax.set_ylim(bottom=0)
+
+            # Right axis: per-class mean predicted probability
+            ax_r = ax.twinx()
+            disease_names = ['HLHS', 'ASD', 'VSD', 'AVSD', 'DORV', 'PuA', 'ToF', 'TGA']
+            cmap = plt.cm.get_cmap('tab10', 8)
+            for c in range(8):
+                probs = []
+                for e in range(aux_epoch):
+                    p = aux_data[e].get('probs', [])
+                    probs.append(p[c] if c < len(p) else float('nan'))
+                label = disease_names[c] if c < len(disease_names) else f"class {c}"
+                ax_r.plot(aux_x, probs, color=cmap(c), ls='--', linewidth=2, label=label)
+            ax_r.axhline(0.5, color='gray', ls=':', linewidth=1)
+            ax_r.set_ylabel("mean predicted probability")
+            ax_r.set_ylim([0, 1])
+
+            ax.set_title(
+                "Aux diagnosis head — BCE loss (black, left) + mean pred prob per disease (dashed, right)\n"
+                "BCE should decrease; probs should differ from 0.5 if the head is learning"
+            )
+            ax.legend(loc='upper right')
+            ax_r.legend(loc='upper left', fontsize=11, ncol=2)
 
         plt.tight_layout()
 
