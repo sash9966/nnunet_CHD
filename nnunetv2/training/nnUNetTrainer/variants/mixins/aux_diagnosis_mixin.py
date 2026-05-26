@@ -276,6 +276,7 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         K = getattr(self, 'disease_K', self.aux_num_classes)
         vecs = []
         for case_id in batch_keys:
+            case_id = case_id.removesuffix("_image")  # blosc2 identifiers include _image suffix
             if case_id not in dm:
                 return None  # skip batch if any key is missing
             vecs.append(dm[case_id][:K])

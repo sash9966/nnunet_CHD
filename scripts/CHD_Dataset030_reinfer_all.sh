@@ -102,43 +102,58 @@ else
     echo "[DONE] ${KEY}"
 fi
 
-# Helper: run predict_disease_conditioned, skipping if no checkpoint exists.
+# Helper: nnUNetv2_predict for non-conditioned trainers (no disease vec needed).
+run_standard_infer() {
+    local key="$1" trainer="$2"
+    local out_dir="${PRED_BASE}/$(sk ${trainer})"
+    local ckpt="${nnUNet_results}/${DATASET_NAME}/${trainer}__${PLANS}__${FULLRES}/fold_0/checkpoint_final.pth"
+
+    if is_done "${key}"; then echo "[SKIP] ${key}"; return; fi
+    if [[ ! -f "${ckpt}" ]]; then
+        echo "[WARN] ${key}: no checkpoint — skipping"; return
+    fi
+    echo "--- ${key} ---"
+    mkdir -p "${out_dir}"
+    nnUNetv2_predict \
+        -i "${IN_DIR}" -o "${out_dir}" \
+        -d ${DATASET_ID} -c ${FULLRES} \
+        -f 0 -tr ${trainer} -p ${PLANS}
+    mark_done "${key}"
+    echo "[DONE] ${key}"
+}
+
+# Helper: predict_disease_conditioned for trainers that need disease vecs.
 run_conditioned_infer() {
     local key="$1" trainer="$2"
     local model_dir="${nnUNet_results}/${DATASET_NAME}/${trainer}__${PLANS}__${FULLRES}"
     local out_dir="${PRED_BASE}/$(sk ${trainer})"
     local ckpt="${model_dir}/fold_0/checkpoint_final.pth"
 
-    if is_done "${key}"; then
-        echo "[SKIP] ${key}"
-        return
-    fi
+    if is_done "${key}"; then echo "[SKIP] ${key}"; return; fi
     if [[ ! -f "${ckpt}" ]]; then
-        echo "[WARN] ${key}: no checkpoint at ${ckpt} — training not finished, skipping"
-        return
+        echo "[WARN] ${key}: no checkpoint — skipping"; return
     fi
     echo "--- ${key} ---"
     mkdir -p "${out_dir}"
     python -m nnunetv2.inference.predict_disease_conditioned \
-        -i "${IN_DIR}" \
-        -o "${out_dir}" \
-        -m "${model_dir}" \
-        -f 0
+        -i "${IN_DIR}" -o "${out_dir}" -m "${model_dir}" -f 0
     mark_done "${key}"
     echo "[DONE] ${key}"
 }
 
 # ─────────────────────────────────────────────
-# 2. AuxDiag — predict_disease_conditioned
-#    DA5AuxDiag / DA5AuxDiagTopo: no inference_config.json → auto-fallback
-#    DA5FiLMAuxDiag: disease_map.json in model folder → per-case vec
+# 2. AuxDiag trainers
+#    DA5AuxDiag / DA5AuxDiagTopo: plain segmentation network, no disease vec
+#      at inference → use standard nnUNetv2_predict (avoids silent multiprocessing
+#      failure in predict_disease_conditioned's non-conditioned fallback path).
+#    DA5FiLMAuxDiag: FiLM conditioning → needs per-case disease vec.
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "2. AuxDiag trainers (disease-conditioned where applicable)"
+echo "2. AuxDiag trainers"
 echo "================================================================"
-run_conditioned_infer "auxdiag_DA5AuxDiag200e"        "nnUNetTrainerDA5AuxDiag_200epochs"
-run_conditioned_infer "auxdiag_DA5AuxDiagTopo200e"    "nnUNetTrainerDA5AuxDiagTopo_200epochs"
-run_conditioned_infer "auxdiag_DA5FiLMAuxDiag200e"    "nnUNetTrainerDA5FiLMAuxDiag_200epochs"
+run_standard_infer   "auxdiag_DA5AuxDiag200e"        "nnUNetTrainerDA5AuxDiag_200epochs"
+run_standard_infer   "auxdiag_DA5AuxDiagTopo200e"    "nnUNetTrainerDA5AuxDiagTopo_200epochs"
+run_conditioned_infer "auxdiag_DA5FiLMAuxDiag200e"   "nnUNetTrainerDA5FiLMAuxDiag_200epochs"
 
 # ─────────────────────────────────────────────
 # 3. CrossAttn — predict_disease_conditioned (all need disease vecs)
