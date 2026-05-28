@@ -127,7 +127,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 - `scripts/generate_cascade_preds.py` — runs a trained fold-0 lowres model over ALL training+val cases and saves `.b2nd` predictions to `predicted_next_stage/3d_cascade_fullres/`; needed because `perform_actual_validation` only saves the ~7 fold-0 val cases when training fold 0 only; called inside the ablation + wholeheart SLURM scripts at Phase 2.5
 - `scripts/make_presentation.py` — generates `docs/CHD_TopologyLoss_Presentation.pptx`
 - `scripts/test_curriculum_class_weights.py` — unit test for curriculum weights
-- `scripts/convert_imagechd_to_wholeheart.py` — builds `Dataset040_ImageCHD_HU_WH` (binary heart) from Dataset030; symlinks images, binarises labelsTr, writes dataset.json. Used by `CHD_Dataset040_wholeheart.sh`.
+- `scripts/convert_imagechd_to_wholeheart.py` — builds `Dataset040_WH_ImageCHD_HU_Detail` (binary heart) from Dataset030; symlinks images, binarises labelsTr, writes dataset.json. Used by `CHD_Dataset040_wholeheart.sh`.
 - `scripts/evaluate_wholeheart.py` — per-case Dice / IoU / HD95 / MSD / connected-component / largest-component / hole / skeleton-branch metrics. Optional `--compare-to MULTICLASS_DIR` collapses Dataset030 predictions on the fly for side-by-side comparison.
 
 **make_disease_map.py usage:**
@@ -194,7 +194,7 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | Dataset013 | 13 | `Dataset013_Fanweidatacleaned` | Fanwei cleaned clinical data — standalone baseline | No | No FiLM/topology; DA5 + cascade only |
 | Dataset020 | 20 | `Dataset020FanweiDataandImageCHD_HU` | Fanwei + imageCHD combined | No | Clinical deployment model; superset of Dataset013 |
 | Dataset030 | 30 | `Dataset030_imageCHD_HU` | Kaggle imageCHD with HU values | Yes (same labels) | More vessel branches, less smooth |
-| Dataset040 | 40 | `Dataset040_ImageCHD_HU_WH` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py` |
+| Dataset040 | 40 | `Dataset040_WH_ImageCHD_HU_Detail` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py` |
 
 **Label scheme (all datasets use same names):**
 

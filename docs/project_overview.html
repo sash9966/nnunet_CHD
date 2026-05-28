@@ -597,8 +597,8 @@ python scripts/convert_imagechd_to_wholeheart.py              # binarise labelsT
   <br>
   <h3 style="margin-bottom:12px;">Evaluate with topology proxies</h3>
   <pre>python scripts/evaluate_wholeheart.py \
-    --pred-dir $nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/DA5_cascade \
-    --gt-dir   $nnUNet_raw/Dataset040_ImageCHD_HU_WH/labelsTs \
+    --pred-dir $nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart/DA5_cascade \
+    --gt-dir   $nnUNet_raw/Dataset040_WH_ImageCHD_HU_Detail/labelsTs \
     --compare-to $nnUNet_results/Dataset030_imageCHD_HU/predictions/DA5_fullres \
     --out      eval_cascade_vs_multiclass.csv</pre>
   <p style="margin-bottom:6px;">Per-case metrics:</p>
@@ -1096,7 +1096,7 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
     <summary><span class="badge badge-green">040</span> CHD_Dataset040_wholeheart.sh <span style="color:var(--muted);font-weight:400;">(Whole-Heart Stage 1)</span></summary>
     <div class="details-body">
       <div class="two-col" style="margin-bottom:12px;">
-        <div><p><strong>Dataset:</strong> Dataset040_ImageCHD_HU_WH (ID=40)</p>
+        <div><p><strong>Dataset:</strong> Dataset040_WH_ImageCHD_HU_Detail (ID=40)</p>
           <p><strong>SLURM job name:</strong> <code>D040-wholeheart</code></p>
           <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
         <div><p><strong>3 binary-heart trainings (1 trainer × 3 configs):</strong></p>
@@ -1110,7 +1110,7 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
       </div>
       <pre>python scripts/convert_imagechd_to_wholeheart.py
 sbatch scripts/CHD_Dataset040_wholeheart.sh</pre>
-      <p style="margin-top:8px;">Predictions in <code>$nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/{DA5_fullres,DA5_lowres,DA5_cascade}/</code>. Evaluate with <code>scripts/evaluate_wholeheart.py</code>. Full spec in <code>docs/wholeheart_pipeline.md</code>.</p>
+      <p style="margin-top:8px;">Predictions in <code>$nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart/{DA5_fullres,DA5_lowres,DA5_cascade}/</code>. Evaluate with <code>scripts/evaluate_wholeheart.py</code>. Full spec in <code>docs/wholeheart_pipeline.md</code>.</p>
     </div>
   </details>
 

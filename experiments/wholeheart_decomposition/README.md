@@ -38,11 +38,11 @@ and answer:
 
 ## Conventions for all sub-experiments
 
-- Inputs come from `${nnUNet_results}/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/<model>/`.
+- Inputs come from `${nnUNet_results}/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart/<model>/`.
 - Original CT lives at `${nnUNet_raw}/Dataset030_imageCHD_HU/imagesTs/`
   (Dataset040 symlinks the same files; either path works).
 - Reference 7-class GT lives at `${nnUNet_raw}/Dataset030_imageCHD_HU/labelsTs/`.
-- Output a new directory `${nnUNet_results}/Dataset040_ImageCHD_HU_WH/stage2_<method>/`
+- Output a new directory `${nnUNet_results}/Dataset040_WH_ImageCHD_HU_Detail/stage2_<method>/`
   containing the recovered 7-class predictions in the same NIfTI format as Dataset030.
 - Final eval should reuse the existing nnU-Net evaluation tooling against
   Dataset030's `labelsTs`.

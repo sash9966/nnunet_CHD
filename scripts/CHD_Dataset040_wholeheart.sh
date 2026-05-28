@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_Dataset040_wholeheart.sh
-#  Dataset040_ImageCHD_HU_WH — Binary whole-heart segmentation, fold 0, 200 epochs
+#  Dataset040_WH_ImageCHD_HU_Detail — Binary whole-heart segmentation, fold 0, 200 epochs
 #
 #  Stage 1 of the whole-heart-first pipeline. Trains three binary heart models
 #  (fullres / lowres / cascade) and runs imagesTs inference for each.  These
@@ -31,7 +31,7 @@
 #    - nnU-Net auto-resumes interrupted training from checkpoint_latest.pth.
 #    - Preprocess + disease_map markers in SHARED_CKPT_DIR so re-conversion of
 #      Dataset040 doesn't repeat them.
-#    Local checkpoint dir: ${nnUNet_results}/Dataset040_ImageCHD_HU_WH/.checkpoints/CHD_Dataset040_wholeheart/
+#    Local checkpoint dir: ${nnUNet_results}/Dataset040_WH_ImageCHD_HU_Detail/.checkpoints/CHD_Dataset040_wholeheart/
 #
 #  Before first submission:
 #    1.  Run the conversion script:
@@ -72,7 +72,7 @@ export PYTHONUNBUFFERED=1
 # 2.  Configuration
 # ─────────────────────────────────────────────
 DATASET_ID=40
-DATASET_NAME="Dataset040_ImageCHD_HU_WH"
+DATASET_NAME="Dataset040_WH_ImageCHD_HU_Detail"
 PLANNER="nnUNetPlannerResEncM"
 PLANS="nnUNetResEncUNetMPlans"
 FULLRES="3d_fullres"

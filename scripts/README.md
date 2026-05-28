@@ -56,8 +56,8 @@ sbatch scripts/CHD_Dataset040_wholeheart.sh
 After training, evaluate with topology proxies:
 
 ```bash
-PRED=$nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart
-GT=$nnUNet_raw/Dataset040_ImageCHD_HU_WH/labelsTs
+PRED=$nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart
+GT=$nnUNet_raw/Dataset040_WH_ImageCHD_HU_Detail/labelsTs
 
 python scripts/evaluate_wholeheart.py --pred-dir $PRED/DA5_fullres --gt-dir $GT --out eval_fullres.csv
 python scripts/evaluate_wholeheart.py --pred-dir $PRED/DA5_lowres  --gt-dir $GT --out eval_lowres.csv

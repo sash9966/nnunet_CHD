@@ -41,7 +41,7 @@ CLI options:
 |---|---|---|
 | `--source-dataset` | `Dataset030_imageCHD_HU` | Where to read images and multiclass labels |
 | `--target-id` | `40` | Dataset ID (folder is `Dataset0{id:03d}_*`) |
-| `--target-name` | `Dataset040_ImageCHD_HU_WH` | Output folder name |
+| `--target-name` | `Dataset040_WH_ImageCHD_HU_Detail` | Output folder name |
 | `--raw-root` | `$nnUNet_raw` | Override the nnUNet_raw root |
 | `--copy` / `--symlink` | symlink | How to handle CT files |
 | `--overwrite` | off | Wipe existing target folder first |
@@ -72,7 +72,7 @@ plan on ~2–3 walltime cycles at 48 h each.
 **Predictions land in:**
 
 ```
-$nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/
+$nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart/
   DA5_fullres/    — Stage-1 fullres binary heart masks  (Phase 1b)
   DA5_lowres/     — Stage-1 lowres binary heart masks   (Phase 2b)
   DA5_cascade/    — Stage-1 cascade-refined heart masks (Phase 4b)
@@ -83,8 +83,8 @@ $nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/
 ## 3. Evaluate — fullres vs lowres vs cascade vs collapsed multiclass
 
 ```bash
-PRED=$nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart
-GT=$nnUNet_raw/Dataset040_ImageCHD_HU_WH/labelsTs
+PRED=$nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart
+GT=$nnUNet_raw/Dataset040_WH_ImageCHD_HU_Detail/labelsTs
 
 # Each model in isolation
 python scripts/evaluate_wholeheart.py --pred-dir $PRED/DA5_fullres --gt-dir $GT --out eval_fullres.csv
@@ -139,7 +139,7 @@ translate to that dataset with no new trainer code.
 $nnUNet_raw/
   Dataset030_imageCHD_HU/         ← source
     imagesTr/  labelsTr/  imagesTs/  labelsTs/
-  Dataset040_ImageCHD_HU_WH/      ← built by the conversion script
+  Dataset040_WH_ImageCHD_HU_Detail/      ← built by the conversion script
     imagesTr/  → symlinks to Dataset030/imagesTr
     imagesTs/  → symlinks to Dataset030/imagesTs
     labelsTs/  → symlinks to Dataset030/labelsTs   (multiclass; binarise on the fly)
@@ -148,10 +148,10 @@ $nnUNet_raw/
     conversion_summary.csv
 
 $nnUNet_preprocessed/
-  Dataset040_ImageCHD_HU_WH/      ← built by nnUNetv2_plan_and_preprocess
+  Dataset040_WH_ImageCHD_HU_Detail/      ← built by nnUNetv2_plan_and_preprocess
 
 $nnUNet_results/
-  Dataset040_ImageCHD_HU_WH/
+  Dataset040_WH_ImageCHD_HU_Detail/
     nnUNetTrainerDA5_200epochs__nnUNetResEncUNetMPlans__3d_fullres/
     nnUNetTrainerDA5_200epochs__nnUNetResEncUNetMPlans__3d_lowres/
     nnUNetTrainerDA5_200epochs__nnUNetResEncUNetMPlans__3d_cascade_fullres/

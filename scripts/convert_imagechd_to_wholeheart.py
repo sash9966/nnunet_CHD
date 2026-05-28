@@ -2,7 +2,7 @@
 """
 convert_imagechd_to_wholeheart.py
 ---------------------------------
-Derive a binary whole-heart nnU-Net dataset (default Dataset040_ImageCHD_HU_WH)
+Derive a binary whole-heart nnU-Net dataset (default Dataset040_WH_ImageCHD_HU_Detail)
 from an existing multiclass ImageCHD dataset (default Dataset030_imageCHD_HU).
 
 Behaviour
@@ -24,7 +24,7 @@ CLI
     python scripts/convert_imagechd_to_wholeheart.py
         [--source-dataset Dataset030_imageCHD_HU]
         [--target-id 40]
-        [--target-name Dataset040_ImageCHD_HU_WH]
+        [--target-name Dataset040_WH_ImageCHD_HU_Detail]
         [--raw-root $nnUNet_raw]
         [--copy | --symlink]      (default: --symlink)
         [--overwrite]
@@ -170,7 +170,7 @@ def main() -> int:
                    help="Source dataset folder name under nnUNet_raw.")
     p.add_argument("--target-id", type=int, default=40,
                    help="Target dataset ID (default 40 → Dataset040_*).")
-    p.add_argument("--target-name", default="Dataset040_ImageCHD_HU_WH",
+    p.add_argument("--target-name", default="Dataset040_WH_ImageCHD_HU_Detail",
                    help="Target dataset folder name under nnUNet_raw. "
                         "Must start with 'Dataset{ID:03d}_' to satisfy nnU-Net's naming.")
     p.add_argument("--raw-root", default=None,
