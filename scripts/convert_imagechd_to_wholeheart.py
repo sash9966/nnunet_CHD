@@ -9,9 +9,9 @@ Behaviour
 ---------
 imagesTr / imagesTs   — symlinked (or copied with --copy) from the source dataset.
                         Same affine / spacing / orientation as the source.
-labelsTr              — read each labelmap, write (arr > 0).astype(uint8) with
-                        the source's affine + header preserved.
-labelsTs              — symlinked if present in source (helps `evaluate_wholeheart.py`).
+labelsTr / labelsTs   — read each labelmap, write (arr > 0).astype(uint8) with
+                        the source's affine + header preserved (same binarization
+                        for both splits; evaluate_wholeheart.py compares directly).
 dataset.json          — built via `generate_dataset_json()` with the binary label scheme.
 disease_map.json      — NOT copied here. The companion SLURM launcher regenerates
                         it from `imageCHD_dataset_info.xlsx` after preprocessing.
@@ -272,50 +272,51 @@ def main() -> int:
         for f in test_image_files:
             _link_or_copy(f.resolve(), dst_images_ts / f.name, copy_mode, args.dry_run)
 
-    # ── labelsTs (optional, symlinked even when --copy because we'll never modify them) ──
-    if test_label_files:
-        print(f"-- labelsTs ({len(test_label_files)} files) — symlinked (binary check uses originals collapsed) --")
-        for f in test_label_files:
-            _link_or_copy(f.resolve(), dst_labels_ts / f.name, copy_mode, args.dry_run)
-
-    # ── labelsTr: binarize ───────────────────────────────────────────────
-    print(f"-- labelsTr ({len(label_files)} files): binarizing --")
+    # ── labelsTr + labelsTs: binarize both ──────────────────────────────
     summary_rows: list[dict] = []
     affine_failures: list[str] = []
     delta_failures: list[str] = []
-    for f in label_files:
-        case_id = f.name.removesuffix(".nii.gz")
-        dst = dst_labels_tr / f.name
-        try:
-            counter, orig_fg, bin_fg, affine_ok = _binarize_label(
-                f.resolve(), dst, args.dry_run
+
+    def _binarize_split(files: list[Path], dst_dir: Path, split: str) -> None:
+        print(f"-- {split} ({len(files)} files): binarizing --")
+        for f in files:
+            case_id = f.name.removesuffix(".nii.gz")
+            dst = dst_dir / f.name
+            try:
+                counter, orig_fg, bin_fg, affine_ok = _binarize_label(
+                    f.resolve(), dst, args.dry_run
+                )
+            except Exception as e:
+                print(f"  [FAIL] {case_id}: {e}", file=sys.stderr)
+                raise
+
+            delta = bin_fg - orig_fg
+            unique_labels = sorted(counter.keys())
+            ok = (delta == 0) and affine_ok
+            flag = "OK" if ok else "WARN"
+            print(
+                f"  [{flag}] {case_id:>16}  labels={unique_labels}  "
+                f"orig_fg={orig_fg}  bin_fg={bin_fg}  delta={delta}  affine_ok={affine_ok}"
             )
-        except Exception as e:
-            print(f"  [FAIL] {case_id}: {e}", file=sys.stderr)
-            raise
 
-        delta = bin_fg - orig_fg
-        unique_labels = sorted(counter.keys())
-        ok = (delta == 0) and (affine_ok)
-        flag = "OK" if ok else "WARN"
-        print(
-            f"  [{flag}] {case_id:>16}  labels={unique_labels}  "
-            f"orig_fg={orig_fg}  bin_fg={bin_fg}  delta={delta}  affine_ok={affine_ok}"
-        )
+            if delta != 0:
+                delta_failures.append(f"{split}/{case_id}")
+            if not affine_ok:
+                affine_failures.append(f"{split}/{case_id}")
 
-        if delta != 0:
-            delta_failures.append(case_id)
-        if not affine_ok:
-            affine_failures.append(case_id)
+            summary_rows.append({
+                "split": split,
+                "case_id": case_id,
+                "original_labels_present": ",".join(str(v) for v in unique_labels),
+                "original_fg_voxels": orig_fg,
+                "binary_fg_voxels": bin_fg,
+                "fg_voxel_delta": delta,
+                "affine_preserved": affine_ok,
+            })
 
-        summary_rows.append({
-            "case_id": case_id,
-            "original_labels_present": ",".join(str(v) for v in unique_labels),
-            "original_fg_voxels": orig_fg,
-            "binary_fg_voxels": bin_fg,
-            "fg_voxel_delta": delta,
-            "affine_preserved": affine_ok,
-        })
+    _binarize_split(label_files, dst_labels_tr, "labelsTr")
+    if test_label_files:
+        _binarize_split(test_label_files, dst_labels_ts, "labelsTs")
 
     # ── dataset.json ─────────────────────────────────────────────────────
     print()
@@ -349,7 +350,10 @@ def main() -> int:
         print(f"  [DRY-RUN] would write {summary_path}  ({len(summary_rows)} rows)")
     else:
         with summary_path.open("w", newline="") as fp:
-            writer = csv.DictWriter(fp, fieldnames=list(summary_rows[0].keys()))
+            fieldnames = ["split", "case_id", "original_labels_present",
+                          "original_fg_voxels", "binary_fg_voxels",
+                          "fg_voxel_delta", "affine_preserved"]
+            writer = csv.DictWriter(fp, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(summary_rows)
         print(f"  wrote {summary_path}")

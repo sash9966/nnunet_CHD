@@ -23,17 +23,18 @@ python scripts/convert_imagechd_to_wholeheart.py
 ```
 
 **What happens.**
-- `imagesTr/`, `imagesTs/`, `labelsTs/` are **symlinked** from
-  `Dataset030_imageCHD_HU` (default `--symlink`; pass `--copy` to duplicate).
-  This keeps the test set identical so binary Dice is comparable to the
-  collapsed multiclass model.
-- `labelsTr/` is rewritten: every voxel where the original label is `> 0`
-  becomes `1`, everything else stays `0`. Affine and header are preserved
-  exactly (`np.allclose(affine_after, affine_before, atol=1e-8)`).
+- `imagesTr/`, `imagesTs/` are **symlinked** from `Dataset030_imageCHD_HU`
+  (default `--symlink`; pass `--copy` to duplicate). CT data is never modified.
+- `labelsTr/` and `labelsTs/` are **binarized**: every voxel where the original
+  label is `> 0` becomes `1`, everything else stays `0`. Affine and header are
+  preserved exactly (`np.allclose(affine_after, affine_before, atol=1e-8)`).
+  Both splits go through the same `_binarize_label()` path — no on-the-fly
+  collapsing needed in `evaluate_wholeheart.py`.
 - `dataset.json` is generated with `labels = {"background": 0, "heart": 1}`,
   `channel_names = {"0": "CT"}`, `file_ending = ".nii.gz"`.
-- `conversion_summary.csv` captures per-case sanity: original labels present,
-  fg-voxel count before and after, delta (must be 0), affine preservation flag.
+- `conversion_summary.csv` captures per-case sanity for both `labelsTr` and
+  `labelsTs`: original labels present, fg-voxel count before and after,
+  delta (must be 0), affine preservation flag.
 
 CLI options:
 
@@ -142,8 +143,8 @@ $nnUNet_raw/
   Dataset040_WH_ImageCHD_HU_Detail/      ← built by the conversion script
     imagesTr/  → symlinks to Dataset030/imagesTr
     imagesTs/  → symlinks to Dataset030/imagesTs
-    labelsTs/  → symlinks to Dataset030/labelsTs   (multiclass; binarise on the fly)
     labelsTr/  ← binary (uint8) rewrites
+    labelsTs/  ← binary (uint8) rewrites  (same conversion as labelsTr)
     dataset.json
     conversion_summary.csv
 
