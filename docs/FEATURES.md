@@ -107,23 +107,28 @@ Read this file at the start of any conversation to reconstruct full project stat
 
 ## 3. SLURM Scripts (`scripts/`)
 
-| Script | Dataset | Purpose | Epochs | Resume? |
-|---|---|---|---|---|
-| `CHD_Dataset001_cascade_200epochs.sh` | Dataset001 (ID=1) | 4 cascade pairs: DA5/FiLM/Topo/FiLMTopo | 200 | Yes |
-| `CHD_Dataset013_Fanwei.sh` | Dataset013 (ID=13) | DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
-| `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment: DA5 fullres + cascade baseline, 5-fold ensemble | 200 | Yes |
-| `CHD_Dataset030_imageCHD.sh` | Dataset030 (ID=30) | 3 experiments: DA5 fullres + cascade baseline + cascade topo | 200 | Yes |
-| `CHD_Dataset030_AuxDiag.sh` | Dataset030 (ID=30) | 3 experiments: AuxDiag / AuxDiagTopo / FiLMAuxDiag fullres | 200 | Yes |
-| `CHD_Dataset030_CrossAttn.sh` | Dataset030 (ID=30) | 3 experiments: CrossAttn / CrossAttnTopo / AuxDiagCrossAttn fullres | 200 | Yes |
-| `CHD_Cascade_allFolds.sh` | Dataset001 (ID=1) | Same 4 cascade pairs — legacy 100-epoch version | 100 | No |
-| `train_cascade_ablation.sh` | Dataset001 | Earlier ablation script | — | No |
+**See `scripts/README.md` for the scientific buildup order — that file is the canonical runbook.**
+
+| Phase | Script | Dataset | Purpose | Epochs | Resume? |
+|---|---|---|---|---|---|
+| 1 | `CHD_Dataset040_wholeheart.sh` | Dataset040 (ID=40) | **Whole-heart Stage 1:** binary heart vs not-heart. Trains fullres + lowres + cascade DA5 and infers on imagesTs. See `docs/wholeheart_pipeline.md`. | 200 | Yes |
+| 2 | `CHD_Dataset030_ablation_topo.sh` | Dataset030 (ID=30) | **Topology + cascade ablation:** baselines + topology hypothesis (B1, B2, T1, T2, T3) — 7 trainings, fold 0 | 200 | Yes |
+| 3 | `CHD_Dataset030_ablation_disease.sh` | Dataset030 (ID=30) | **Disease conditioning alone:** D1=FiLM, D2=AuxDiag, D3=CrossAttn — 3 trainings, fold 0 | 200 | Yes |
+| 4 | `CHD_Dataset030_ablation_combos.sh` | Dataset030 (ID=30) | **Combinations:** C1–C5 (FiLM/Aux/CrossAttn × Topo + embedding-reuse) — 5 trainings, fold 0 | 200 | Yes |
+| C | `CHD_Dataset013_Fanwei.sh` | Dataset013 (ID=13) | Clinical baseline (no disease labels) | 200 | Yes |
+| C | `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment (Fanwei + imageCHD merged) | 200 | Yes |
+| — | `CHD_Dataset001_cascade_200epochs.sh` | Dataset001 (ID=1) | Historical D001 ablation — kept for reproducibility, not featured | 200 | Yes |
+| — | `CHD_Dataset030_reinfer_all.sh` | Dataset030 | Operational helper: re-infer all trained models without re-training | — | — |
+| — | `CHD_Dataset030_reinfer_conditioned.sh` | Dataset030 | Same but for disease-conditioned models only | — | — |
 
 **Support scripts:**
 - `scripts/make_disease_map.py` — converts imageCHD diagnosis CSV → `disease_map.json`; called as Phase 0b in all Dataset030/001 scripts (see usage below)
 - `scripts/setup_cascade_predictions.py` — creates symlinks so cascade fullres trainers find lowres predictions when trainer class names differ
-- `scripts/generate_cascade_preds.py` — runs a trained fold-0 lowres model over ALL training+val cases and saves `.b2nd` predictions to `predicted_next_stage/3d_cascade_fullres/`; needed because `perform_actual_validation` only saves the ~7 fold-0 val cases when training fold 0 only; called as Phase 2.5 in `CHD_Dataset030_imageCHD.sh`
+- `scripts/generate_cascade_preds.py` — runs a trained fold-0 lowres model over ALL training+val cases and saves `.b2nd` predictions to `predicted_next_stage/3d_cascade_fullres/`; needed because `perform_actual_validation` only saves the ~7 fold-0 val cases when training fold 0 only; called inside the ablation + wholeheart SLURM scripts at Phase 2.5
 - `scripts/make_presentation.py` — generates `docs/CHD_TopologyLoss_Presentation.pptx`
 - `scripts/test_curriculum_class_weights.py` — unit test for curriculum weights
+- `scripts/convert_imagechd_to_wholeheart.py` — builds `Dataset040_ImageCHD_HU_WH` (binary heart) from Dataset030; symlinks images, binarises labelsTr, writes dataset.json. Used by `CHD_Dataset040_wholeheart.sh`.
+- `scripts/evaluate_wholeheart.py` — per-case Dice / IoU / HD95 / MSD / connected-component / largest-component / hole / skeleton-branch metrics. Optional `--compare-to MULTICLASS_DIR` collapses Dataset030 predictions on the fly for side-by-side comparison.
 
 **make_disease_map.py usage:**
 ```bash
@@ -189,6 +194,7 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | Dataset013 | 13 | `Dataset013_Fanweidatacleaned` | Fanwei cleaned clinical data — standalone baseline | No | No FiLM/topology; DA5 + cascade only |
 | Dataset020 | 20 | `Dataset020FanweiDataandImageCHD_HU` | Fanwei + imageCHD combined | No | Clinical deployment model; superset of Dataset013 |
 | Dataset030 | 30 | `Dataset030_imageCHD_HU` | Kaggle imageCHD with HU values | Yes (same labels) | More vessel branches, less smooth |
+| Dataset040 | 40 | `Dataset040_ImageCHD_HU_WH` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py` |
 
 **Label scheme (all datasets use same names):**
 

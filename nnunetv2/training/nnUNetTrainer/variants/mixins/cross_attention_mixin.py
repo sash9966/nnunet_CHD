@@ -430,6 +430,8 @@ class CrossAttentionConditioningMixin(TrainerMixin):
         self.disease_map: Optional[Dict[str, List[int]]] = None
         # Step counter for attention entropy logging (every 50 steps)
         self._ca_step_count: int = 0
+        # Per-epoch per-stage entropy accumulator (stage_idx -> list[float])
+        self._ca_entropy_accum: Dict[str, List[float]] = {}
 
     # ------------------------------------------------------------------
     # Hook: mixin_initialize  (disease map + network wrap)
@@ -474,6 +476,9 @@ class CrossAttentionConditioningMixin(TrainerMixin):
         extra = super().mixin_extra_loss(output, target, batch, **forward_kwargs)
 
         self._ca_step_count += 1
+        # Always accumulate per-epoch (cheap; entropy uses cached detached attn)
+        self._accumulate_attention_entropy()
+        # Periodic text log retained for live runs
         if self._ca_step_count % 50 == 0:
             self._log_attention_entropy()
 
@@ -590,8 +595,21 @@ class CrossAttentionConditioningMixin(TrainerMixin):
             vecs.append(self.disease_map[case_id])
         return torch.tensor(vecs, dtype=torch.float32, device=self.device)
 
+    def _accumulate_attention_entropy(self):
+        """Append per-stage entropy of the most recent forward to the epoch accumulator."""
+        mod = self._get_unwrapped_network()
+        if not hasattr(mod, 'cross_attn_blocks'):
+            return
+        for stage_idx, block in mod.cross_attn_blocks.items():
+            if block._last_attn is None:
+                continue
+            with torch.no_grad():
+                attn = block._last_attn.float()             # (B, N, K)
+                entropy = -(attn * (attn + 1e-8).log()).sum(dim=-1).mean().item()
+            self._ca_entropy_accum.setdefault(stage_idx, []).append(entropy)
+
     def _log_attention_entropy(self):
-        """Compute and log per-stage attention entropy over disease tokens."""
+        """Print the most recent step's per-stage attention entropy."""
         mod = self._get_unwrapped_network()
         if not hasattr(mod, 'cross_attn_blocks'):
             return
@@ -599,10 +617,8 @@ class CrossAttentionConditioningMixin(TrainerMixin):
         for stage_idx, block in mod.cross_attn_blocks.items():
             if block._last_attn is None:
                 continue
-            # attn: (B, N, K) — distribution over K disease tokens per spatial pos
-            attn = block._last_attn.float()             # (B, N, K)
+            attn = block._last_attn.float()
             entropy = -(attn * (attn + 1e-8).log()).sum(dim=-1).mean().item()
-            # Max possible entropy for K=8 tokens: ln(8) ≈ 2.08
             parts.append(f"s{stage_idx}={entropy:.3f}")
         if parts:
             self.print_to_log_file(
@@ -610,3 +626,39 @@ class CrossAttentionConditioningMixin(TrainerMixin):
                 f"attn_entropy(nats) [{', '.join(parts)}]  "
                 f"(max={math.log(self.disease_K):.2f} = uniform)"
             )
+
+    # ------------------------------------------------------------------
+    # Hook: per-epoch entropy aggregation + logger record
+    # ------------------------------------------------------------------
+    def mixin_on_train_epoch_end(self, train_outputs):
+        super().mixin_on_train_epoch_end(train_outputs)
+        if not self._ca_entropy_accum:
+            # Loud warning: cross-attention was never invoked this epoch
+            self.print_to_log_file(
+                f"[CrossAttn][WARNING] epoch {self.current_epoch}  "
+                f"no attention entropy collected — disease_vec may not be reaching the network."
+            )
+            self.logger.log(
+                'cross_attention',
+                {'per_stage_entropy': {}, 'max_entropy': math.log(self.disease_K)},
+                self.current_epoch,
+            )
+            return
+
+        per_stage_mean = {
+            s: float(sum(v) / len(v)) for s, v in self._ca_entropy_accum.items()
+        }
+        max_ent = math.log(self.disease_K)
+        # Text log
+        parts = [f"s{s}={e:.3f}" for s, e in sorted(per_stage_mean.items())]
+        self.print_to_log_file(
+            f"[CrossAttn] epoch={self.current_epoch}  "
+            f"mean_attn_entropy(nats) [{', '.join(parts)}]  "
+            f"(max={max_ent:.2f} = uniform; lower = more selective)"
+        )
+        self.logger.log(
+            'cross_attention',
+            {'per_stage_entropy': per_stage_mean, 'max_entropy': max_ent},
+            self.current_epoch,
+        )
+        self._ca_entropy_accum.clear()

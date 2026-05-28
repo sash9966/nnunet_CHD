@@ -227,6 +227,8 @@
   <a href="#labels">Labels</a>
   <a href="#trainers">Trainers</a>
   <a href="#cascade">Cascade Ablation</a>
+  <a href="#ablation">Fold-0 Ablation</a>
+  <a href="#wholeheart">Whole-Heart Pipeline</a>
   <a href="#topology">Topology Loss</a>
   <a href="#film">FiLM</a>
   <a href="#assumptions">Assumptions</a>
@@ -256,8 +258,8 @@
     <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
-    <div class="dash-card"><div class="num">4</div><div class="label">SLURM Scripts</div></div>
-    <div class="dash-card"><div class="num">4</div><div class="label">Datasets</div></div>
+    <div class="dash-card"><div class="num">7</div><div class="label">SLURM Scripts</div></div>
+    <div class="dash-card"><div class="num">5</div><div class="label">Datasets</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
   </div>
@@ -495,6 +497,134 @@
         </tr>
       </thead>
       <tbody id="fullres-body">
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── FOLD-0 ABLATION (Dataset030 / 200 epochs) ── -->
+<section id="ablation">
+  <div class="section-title"><span>03b</span> Fold-0 Ablation — Dataset030, 200 epochs</div>
+  <p style="margin-bottom:6px;">Three SLURM scripts split by scientific question. Each is independently submittable, has its own checkpoint directory, and resumes from <code>.done</code> markers + nnU-Net's <code>checkpoint_latest.pth</code> on re-submission. Phase 0 (preprocess) and Phase 0b (disease_map) markers live in a shared dir so the three jobs never repeat each other's setup.</p>
+  <p style="margin-bottom:6px;color:var(--yellow);">All three target the same 48h walltime / single-GPU partition (<code>bioe</code>). Re-submit after wall-time interrupts — completed steps are skipped automatically.</p>
+  <pre>sbatch scripts/CHD_Dataset030_ablation_topo.sh      # Job 1: B1, B2, T1, T2, T3   (~105h, ~3 cycles)
+sbatch scripts/CHD_Dataset030_ablation_disease.sh   # Job 2: D1, D2, D3           (~45h, ~1 cycle)
+sbatch scripts/CHD_Dataset030_ablation_combos.sh    # Job 3: C1..C5               (~75h, ~2 cycles)</pre>
+  <p style="margin-bottom:6px;">If your queue allows parallel submission, the three are fully independent and can run simultaneously on different GPUs.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Ablation rows</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Lowres</th><th>Fullres / Cascade</th><th>Config</th><th>Compared to</th><th>Question being answered</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge">B1</span></td><td>—</td><td>DA5_200e</td><td>3d_fullres</td><td>—</td><td>Classic full-res control</td></tr>
+        <tr><td><span class="badge">B2</span></td><td>DA5_200e</td><td>DA5_200e</td><td>lowres → cascade_fullres</td><td>—</td><td>Classic cascade control</td></tr>
+        <tr><td><span class="badge badge-purple">T1</span></td><td>—</td><td>DA5TopoScheduled_200e</td><td>3d_fullres</td><td>B1</td><td>Does topology loss help at full-res?</td></tr>
+        <tr><td><span class="badge badge-purple">T2</span></td><td>DA5CascadeTopoScheduled_200e</td><td>DA5CascadeFullresBaseline_200e</td><td>lowres → cascade_fullres</td><td>B2, T1</td><td><strong>Hypothesis:</strong> topology at lowres only is enough</td></tr>
+        <tr><td><span class="badge badge-purple">T3</span></td><td>DA5CascadeTopoScheduled_200e (shared with T2)</td><td>DA5CascadeFullresTopoScheduled_200e</td><td>lowres → cascade_fullres</td><td>T2, B2</td><td>Does topology at both stages beat lowres-only?</td></tr>
+        <tr><td><span class="badge badge-accent">D1</span></td><td>—</td><td>DA5FiLMV3_200e</td><td>3d_fullres</td><td>B1</td><td>FiLM bottleneck conditioning alone</td></tr>
+        <tr><td><span class="badge badge-accent">D2</span></td><td>—</td><td>DA5AuxDiag_200e</td><td>3d_fullres</td><td>B1</td><td>Aux head as encoder regularizer (no inference cond)</td></tr>
+        <tr><td><span class="badge badge-accent">D3</span></td><td>—</td><td>DA5CrossAttn_200e</td><td>3d_fullres</td><td>B1</td><td>Spatial cross-attention conditioning</td></tr>
+        <tr><td><span class="badge badge-green">C1</span></td><td>—</td><td>DA5FiLMTopo_200e</td><td>3d_fullres</td><td>D1, T1</td><td>FiLM + topology stacking</td></tr>
+        <tr><td><span class="badge badge-green">C2</span></td><td>—</td><td>DA5AuxDiagTopo_200e</td><td>3d_fullres</td><td>D2, T1</td><td>Aux + topology stacking</td></tr>
+        <tr><td><span class="badge badge-green">C3</span></td><td>—</td><td>DA5CrossAttnTopo_200e</td><td>3d_fullres</td><td>D3, T1</td><td>CrossAttn + topology stacking</td></tr>
+        <tr><td><span class="badge badge-green">C4</span></td><td>—</td><td>DA5AuxDiagCrossAttn_200e</td><td>3d_fullres</td><td>D2, D3</td><td>Embedding reuse: aux supplies tokens to cross-attn</td></tr>
+        <tr><td><span class="badge badge-green">C5</span></td><td>—</td><td>DA5FiLMAuxDiag_200e</td><td>3d_fullres</td><td>D1, D2</td><td>Aux regularises encoder while FiLM modulates bottleneck</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Results — fill in once inference completes</h3>
+  <p style="margin-bottom:6px;color:var(--muted);">Compute test-set Dice on <code>$nnUNet_results/Dataset030_imageCHD_HU/predictions_ablation/&lt;exp&gt;/</code> against the reference labels. Entries persist in localStorage.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Trainer / Pair</th><th>Mean Dice</th><th>AO Dice</th><th>PA Dice</th><th>TGA Dice</th><th>Notes</th><th>Done?</th></tr>
+      </thead>
+      <tbody id="ablation-body"></tbody>
+    </table>
+  </div>
+  <br>
+  <p><strong>Where the predictions land:</strong></p>
+  <pre>$nnUNet_results/Dataset030_imageCHD_HU/predictions_ablation/
+  DA5200e/                                                # B1
+  DA5200e_lowres/                                         # B2 / T2 / T3 lowres preds (also used as prev_stage)
+  CascadeTopoScheduled200e_lowres/                        # T2 / T3 lowres preds
+  B2_DA5200e_cascade/                                     # B2 cascade fullres
+  T2_CascadeFullresBaseline200e_cascade/                  # T2 cascade fullres
+  T3_CascadeFullresTopoScheduled200e_cascade/             # T3 cascade fullres
+  TopoScheduled200e/                                      # T1
+  FiLMV3200e/  AuxDiag200e/  CrossAttn200e/               # D1 / D2 / D3
+  FiLMTopo200e/  AuxDiagTopo200e/  CrossAttnTopo200e/     # C1 / C2 / C3
+  AuxDiagCrossAttn200e/  FiLMAuxDiag200e/                 # C4 / C5</pre>
+</section>
+
+<!-- ── WHOLE-HEART PIPELINE (Dataset040) ── -->
+<section id="wholeheart">
+  <div class="section-title"><span>03c</span> Whole-Heart Pipeline — Dataset040 (Stage 1)</div>
+  <p style="margin-bottom:6px;">Two-stage approach: a binary <strong>heart vs. not-heart</strong> Stage 1, then a separate Stage 2 that assigns the 7 anatomical classes inside the mask. Hypothesis: the failure mode in the current multiclass model is <em>semantic assignment</em>, not anatomical localization — so isolating the two tasks should preserve topology far better.</p>
+  <p style="margin-bottom:6px;color:var(--muted);">Full spec: <code>docs/wholeheart_pipeline.md</code>. Stage-2 decision tree: <code>experiments/wholeheart_decomposition/README.md</code>.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Build Dataset040 from Dataset030</h3>
+  <pre>python scripts/convert_imagechd_to_wholeheart.py --dry-run    # inspect plan
+python scripts/convert_imagechd_to_wholeheart.py              # binarise labelsTr, symlink imagesTr/imagesTs/labelsTs</pre>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Train all three Stage-1 models</h3>
+  <p style="margin-bottom:6px;">Single SLURM script trains fullres + lowres + cascade DA5 models and runs imagesTs inference for each. Resume-safe via <code>.done</code> markers + nnU-Net's <code>checkpoint_latest.pth</code>.</p>
+  <pre>sbatch scripts/CHD_Dataset040_wholeheart.sh</pre>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Trainer</th><th>Config</th><th>Output dir</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">Fullres</span></td><td>DA5_200e</td><td>3d_fullres</td><td><code>predictions_wholeheart/DA5_fullres/</code></td><td>High-resolution patch baseline</td></tr>
+        <tr><td><span class="badge badge-blue">Lowres</span></td><td>DA5_200e</td><td>3d_lowres</td><td><code>predictions_wholeheart/DA5_lowres/</code></td><td>Larger effective field of view → better global topology; also serves as cascade prev_stage</td></tr>
+        <tr><td><span class="badge badge-purple">Cascade</span></td><td>DA5_200e</td><td>3d_cascade_fullres</td><td><code>predictions_wholeheart/DA5_cascade/</code></td><td><strong>Hypothesis:</strong> best for small vessels (PA branches, fine veins) — full-res refinement of the lowres prior</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Evaluate with topology proxies</h3>
+  <pre>python scripts/evaluate_wholeheart.py \
+    --pred-dir $nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/DA5_cascade \
+    --gt-dir   $nnUNet_raw/Dataset040_ImageCHD_HU_WH/labelsTs \
+    --compare-to $nnUNet_results/Dataset030_imageCHD_HU/predictions/DA5_fullres \
+    --out      eval_cascade_vs_multiclass.csv</pre>
+  <p style="margin-bottom:6px;">Per-case metrics:</p>
+  <ul style="margin-left:16px;color:var(--muted);margin-bottom:12px;">
+    <li><strong>Volumetric:</strong> Dice, IoU, FP/FN voxels, volume ratio</li>
+    <li><strong>Surface:</strong> HD95 (mm), mean surface distance (mm)</li>
+    <li><strong>Topology proxies:</strong> connected-component count, largest-component fraction, hole count, skeleton branch count — these catch the flip-flopping branch problem that Dice misses</li>
+  </ul>
+  <p style="color:var(--muted);">Cascade <em>should</em> give higher <code>largest_component_fraction</code> and fewer <code>n_components</code> than fullres if the hypothesis holds. Both should beat the collapsed multiclass baseline on topology metrics.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Stage 2 — decompose the binary mask (scaffolded only)</h3>
+  <p style="margin-bottom:6px;">Seven candidate approaches, all scaffolded with READMEs under <code>experiments/wholeheart_decomposition/</code>. Pick one after Stage-1 evaluation:</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Subfolder</th><th>Approach</th><th>When to choose it</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>mask_constrained_nnunet/</code></td><td>2-channel input (CT + heart mask) → 7-class nnU-Net</td><td>Default if Stage-1 masks are clean — full ablation matrix transfers</td></tr>
+        <tr><td><code>mask_postprocessing/</code></td><td>Intersect existing Dataset030 multiclass preds with the binary mask</td><td>Zero-training baseline — ship first to set the floor</td></tr>
+        <tr><td><code>graph_based/</code></td><td>Skeleton + components → GNN branch classifier</td><td>If post-Stage-2 failure mode is "wrong label on a continuous branch"</td></tr>
+        <tr><td><code>rule_based/</code></td><td>Chamber adjacency + geodesic propagation</td><td>Interpretable baseline; useful feature for the GNN</td></tr>
+        <tr><td><code>medsam_slicer/</code></td><td>MedSAM / SAM-Med3D inside 3D Slicer (MONAI Label)</td><td>Out-of-distribution pathologies or clinician-in-the-loop</td></tr>
+        <tr><td><code>dino_features/</code></td><td>Frozen DINO/transformer features + small classifier head</td><td>If the dataset is too small for nnU-Net to learn discriminative features</td></tr>
+        <tr><td><code>human_in_the_loop/</code></td><td>Slicer Segment Editor manual correction workflow</td><td>Always relevant for clinical CFD preprocessing</td></tr>
       </tbody>
     </table>
   </div>
@@ -923,6 +1053,7 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
   <div class="section-title"><span>09</span> SLURM Scripts</div>
   <p style="margin-bottom:16px;">All scripts are in <code>scripts/</code>. Each includes a start/end banner, per-fold checkpoint markers, and resumes automatically on resubmission. Logs → <code>/scratch/users/sastocke/nnunet_CHD/logs/</code></p>
   <p style="color:var(--yellow);margin-bottom:16px;">Before first submission: <code>mkdir -p /scratch/users/sastocke/nnunet_CHD/logs</code></p>
+  <p style="margin-bottom:16px;"><strong>The canonical runbook is <code>scripts/README.md</code></strong> — it lists the scripts below in scientific-buildup order (Phase 1 = whole-heart, Phase 2 = topology/cascade, Phase 3 = disease conditioning, Phase 4 = combinations, Track C = clinical).</p>
 
   <details open>
     <summary><span class="badge badge-green">013</span> CHD_Dataset013_Fanwei.sh</summary>
@@ -943,26 +1074,6 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
   </details>
 
   <details open>
-    <summary><span class="badge badge-purple">030</span> CHD_Dataset030_imageCHD.sh</summary>
-    <div class="details-body">
-      <div class="two-col" style="margin-bottom:12px;">
-        <div><p><strong>Dataset:</strong> Dataset030_imageCHD_HU (ID=30)</p>
-          <p><strong>SLURM job name:</strong> <code>D030-imageCHD</code></p>
-          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Folds:</strong> 0–4</p></div>
-        <div><p><strong>3 experiments:</strong></p>
-          <ul style="margin-left:16px;color:var(--muted);">
-            <li>DA5 fullres baseline (3d_fullres)</li>
-            <li>Cascade baseline (DA5_200e → CascadeFullresBaseline_200e)</li>
-            <li>Cascade topology (DA5CascadeTopo_200e → CascadeFullresTopo_200e)</li>
-          </ul>
-        </div>
-      </div>
-      <pre>sbatch scripts/CHD_Dataset030_imageCHD.sh</pre>
-      <p style="margin-top:8px;">Inference: 5-fold ensemble, results in <code>$nnUNet_results/Dataset030_imageCHD_HU/predictions/</code></p>
-    </div>
-  </details>
-
-  <details open>
     <summary><span class="badge badge-blue">020</span> CHD_Dataset020_clinical.sh</summary>
     <div class="details-body">
       <div class="two-col" style="margin-bottom:12px;">
@@ -978,6 +1089,92 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
         </div>
       </div>
       <pre>sbatch scripts/CHD_Dataset020_clinical.sh</pre>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-green">040</span> CHD_Dataset040_wholeheart.sh <span style="color:var(--muted);font-weight:400;">(Whole-Heart Stage 1)</span></summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset040_ImageCHD_HU_WH (ID=40)</p>
+          <p><strong>SLURM job name:</strong> <code>D040-wholeheart</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
+        <div><p><strong>3 binary-heart trainings (1 trainer × 3 configs):</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li>DA5_200e on 3d_fullres</li>
+            <li>DA5_200e on 3d_lowres</li>
+            <li>DA5_200e on 3d_cascade_fullres (uses lowres as prev_stage)</li>
+          </ul>
+          <p style="margin-top:6px;">Build Dataset040 first: <code>python scripts/convert_imagechd_to_wholeheart.py</code></p>
+        </div>
+      </div>
+      <pre>python scripts/convert_imagechd_to_wholeheart.py
+sbatch scripts/CHD_Dataset040_wholeheart.sh</pre>
+      <p style="margin-top:8px;">Predictions in <code>$nnUNet_results/Dataset040_ImageCHD_HU_WH/predictions_wholeheart/{DA5_fullres,DA5_lowres,DA5_cascade}/</code>. Evaluate with <code>scripts/evaluate_wholeheart.py</code>. Full spec in <code>docs/wholeheart_pipeline.md</code>.</p>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-purple">030</span> CHD_Dataset030_ablation_topo.sh <span style="color:var(--muted);font-weight:400;">(Job 1/3)</span></summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset030_imageCHD_HU (ID=30)</p>
+          <p><strong>SLURM job name:</strong> <code>D030-abl-topo</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
+        <div><p><strong>5 experiments (7 trainings):</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li><strong>B1</strong> DA5_200e (fullres) — control</li>
+            <li><strong>B2</strong> DA5_200e → DA5_200e (cascade) — classic cascade control</li>
+            <li><strong>T1</strong> DA5TopoScheduled_200e (fullres)</li>
+            <li><strong>T2</strong> DA5CascadeTopoSched → DA5CascadeBaseline — primary hypothesis</li>
+            <li><strong>T3</strong> DA5CascadeTopoSched → DA5CascadeTopoSched</li>
+          </ul>
+          <p style="margin-top:6px;">Total walltime ≈ 105h; needs ~3 resubmissions.</p>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset030_ablation_topo.sh</pre>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-purple">030</span> CHD_Dataset030_ablation_disease.sh <span style="color:var(--muted);font-weight:400;">(Job 2/3)</span></summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset030_imageCHD_HU (ID=30)</p>
+          <p><strong>SLURM job name:</strong> <code>D030-abl-disease</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
+        <div><p><strong>3 disease-conditioning trainings:</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li><strong>D1</strong> DA5FiLMV3_200e — FiLM bottleneck</li>
+            <li><strong>D2</strong> DA5AuxDiag_200e — training-only aux head</li>
+            <li><strong>D3</strong> DA5CrossAttn_200e — per-stage cross-attention</li>
+          </ul>
+          <p style="margin-top:6px;">≈ 45h; usually finishes in one walltime cycle.</p>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset030_ablation_disease.sh</pre>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-purple">030</span> CHD_Dataset030_ablation_combos.sh <span style="color:var(--muted);font-weight:400;">(Job 3/3)</span></summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset030_imageCHD_HU (ID=30)</p>
+          <p><strong>SLURM job name:</strong> <code>D030-abl-combos</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
+        <div><p><strong>5 combination trainings:</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li><strong>C1</strong> DA5FiLMTopo_200e</li>
+            <li><strong>C2</strong> DA5AuxDiagTopo_200e</li>
+            <li><strong>C3</strong> DA5CrossAttnTopo_200e</li>
+            <li><strong>C4</strong> DA5AuxDiagCrossAttn_200e (embedding reuse)</li>
+            <li><strong>C5</strong> DA5FiLMAuxDiag_200e</li>
+          </ul>
+          <p style="margin-top:6px;">≈ 75h; needs ~2 resubmissions.</p>
+        </div>
+      </div>
+      <pre>sbatch scripts/CHD_Dataset030_ablation_combos.sh</pre>
     </div>
   </details>
 
@@ -1120,6 +1317,23 @@ const fullresExps = [
   { id:'fr_curri',    label: 'DA5 + FiLM + Topo + Curriculum', trainer: 'DA5FiLMTopoCurriculum' },
 ];
 
+// Dataset030 fold-0 ablation matrix (CHD_Dataset030_ablation.sh)
+const ablationExps = [
+  { id:'ab_B1', label:'B1', desc:'DA5_200e (fullres)' },
+  { id:'ab_B2', label:'B2', desc:'DA5_200e → DA5_200e (lowres → cascade_fullres)' },
+  { id:'ab_T1', label:'T1', desc:'DA5TopoScheduled_200e (fullres)' },
+  { id:'ab_T2', label:'T2', desc:'DA5CascadeTopoScheduled_200e → DA5CascadeFullresBaseline_200e' },
+  { id:'ab_T3', label:'T3', desc:'DA5CascadeTopoScheduled_200e → DA5CascadeFullresTopoScheduled_200e' },
+  { id:'ab_D1', label:'D1', desc:'DA5FiLMV3_200e (fullres)' },
+  { id:'ab_D2', label:'D2', desc:'DA5AuxDiag_200e (fullres)' },
+  { id:'ab_D3', label:'D3', desc:'DA5CrossAttn_200e (fullres)' },
+  { id:'ab_C1', label:'C1', desc:'DA5FiLMTopo_200e (fullres)' },
+  { id:'ab_C2', label:'C2', desc:'DA5AuxDiagTopo_200e (fullres)' },
+  { id:'ab_C3', label:'C3', desc:'DA5CrossAttnTopo_200e (fullres)' },
+  { id:'ab_C4', label:'C4', desc:'DA5AuxDiagCrossAttn_200e (fullres)' },
+  { id:'ab_C5', label:'C5', desc:'DA5FiLMAuxDiag_200e (fullres)' },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BUILD RESULT TABLES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1155,6 +1369,24 @@ function buildTables() {
     `;
     fbody.appendChild(tr);
   });
+
+  const abody = document.getElementById('ablation-body');
+  if (abody) {
+    ablationExps.forEach(exp => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${exp.label}</strong></td>
+        <td class="mono" style="font-size:10.5px">${exp.desc}</td>
+        <td><input class="result-input" id="${exp.id}_mean" placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+        <td><input class="result-input" id="${exp.id}_ao"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+        <td><input class="result-input" id="${exp.id}_pa"   placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+        <td><input class="result-input" id="${exp.id}_tga"  placeholder="0.000" oninput="markFilled(this)" onchange="saveResults()"></td>
+        <td><textarea class="notes-input" id="${exp.id}_notes" placeholder="notes..." oninput="markFilled(this)" onchange="saveResults()"></textarea></td>
+        <td><input type="checkbox" id="${exp.id}_done" onchange="saveResults()"></td>
+      `;
+      abody.appendChild(tr);
+    });
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

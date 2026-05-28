@@ -32,6 +32,10 @@ class TopologyLossMixin(TrainerMixin):
         self.topo_num_iter: int = 10
         self.topo_class_ids: List[int] = _resolve_topo_class_ids(self.dataset_json)
         self.topo_loss: Optional[TopologyLoss] = None
+        # Per-epoch accumulators for diagnostics (cleared in mixin_on_train_epoch_end).
+        self._topo_loss_accum: List[float] = []
+        self._topo_per_class_loss_accum: dict = {}   # cid -> list of float losses
+        self._topo_per_class_present_accum: dict = {}  # cid -> list of bool
 
     def mixin_initialize(self):
         super().mixin_initialize()
@@ -40,6 +44,10 @@ class TopologyLossMixin(TrainerMixin):
                 topo_class_ids=self.topo_class_ids,
                 num_iter=self.topo_num_iter,
             ).to(self.device)
+            # Pre-seed accumulators so we can always emit a consistent shape per epoch.
+            for cid in self.topo_class_ids:
+                self._topo_per_class_loss_accum[cid] = []
+                self._topo_per_class_present_accum[cid] = []
             self.print_to_log_file(
                 f"Topology loss enabled for class IDs: {self.topo_class_ids} "
                 f"(weight={self.topo_weight}, constant)"
@@ -62,8 +70,69 @@ class TopologyLossMixin(TrainerMixin):
                 full_res_output = output
                 full_res_target = target
             topo_l = self.topo_loss(full_res_output, full_res_target)
+            # Capture per-class diagnostics from the loss module (set inside forward).
+            self._topo_loss_accum.append(float(topo_l.detach()))
+            for cid in self.topo_class_ids:
+                present = self.topo_loss.last_per_class_present.get(cid, False)
+                self._topo_per_class_present_accum[cid].append(bool(present))
+                if present:
+                    self._topo_per_class_loss_accum[cid].append(
+                        self.topo_loss.last_per_class_loss[cid]
+                    )
             extra = extra + self.topo_weight * topo_l
         return extra
+
+    def mixin_on_train_epoch_end(self, train_outputs):
+        super().mixin_on_train_epoch_end(train_outputs)
+        if self.topo_loss is None:
+            return
+
+        # Aggregate per-epoch diagnostics.
+        per_class_loss = {}
+        per_class_present = {}
+        for cid in self.topo_class_ids:
+            losses = self._topo_per_class_loss_accum.get(cid, [])
+            presence = self._topo_per_class_present_accum.get(cid, [])
+            per_class_loss[cid] = (sum(losses) / len(losses)) if losses else float('nan')
+            per_class_present[cid] = (sum(presence) / len(presence)) if presence else 0.0
+
+        mean_topo = (sum(self._topo_loss_accum) / len(self._topo_loss_accum)
+                     if self._topo_loss_accum else float('nan'))
+
+        # Persist to logger so plot_progress_png can render a panel.
+        self.logger.log(
+            'topology',
+            {
+                'weight': float(self.topo_weight),
+                'mean_loss': mean_topo,
+                # JSON-safe: convert int keys to strings (per_class_loss[6] -> '6').
+                'per_class_loss': {str(k): v for k, v in per_class_loss.items()},
+                'per_class_present': {str(k): v for k, v in per_class_present.items()},
+            },
+            self.current_epoch,
+        )
+
+        # Text log: split AO / PA so a flip-flopping class is obvious.
+        # Use foreground label names from dataset_json for the print line.
+        label_names = _foreground_label_names(self.dataset_json) or []
+        parts = []
+        for cid in self.topo_class_ids:
+            # cid is a label id; foreground label list excludes background (cid 0),
+            # so labels[cid-1] corresponds to label id cid.
+            name = label_names[cid - 1] if 0 < cid <= len(label_names) else f"cls{cid}"
+            l = per_class_loss[cid]
+            p = per_class_present[cid]
+            parts.append(f"{name}(cid={cid}) cldice={l:.4f} present={p:.2f}")
+        self.print_to_log_file(
+            f"[Topo] epoch={self.current_epoch}  w={self.topo_weight:.4f}  "
+            f"mean_cldice={mean_topo:.4f}  | {' | '.join(parts)}"
+        )
+
+        # Reset accumulators for next epoch.
+        self._topo_loss_accum.clear()
+        for cid in self.topo_class_ids:
+            self._topo_per_class_loss_accum[cid].clear()
+            self._topo_per_class_present_accum[cid].clear()
 
 
 class TopologyLossScheduledMixin(TopologyLossMixin):

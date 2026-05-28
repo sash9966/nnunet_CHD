@@ -172,6 +172,11 @@ class TopologyLoss(nn.Module):
         super().__init__()
         self.topo_class_ids = topo_class_ids
         self.cldice = SoftClDiceLoss(num_iter=num_iter, smooth=smooth)
+        # Diagnostics: per-class loss + presence flag from the most recent forward.
+        # Mapped cid -> float (loss value, or float('nan') when class was absent).
+        self.last_per_class_loss: dict = {cid: float('nan') for cid in topo_class_ids}
+        # cid -> bool (was the class present in the batch).
+        self.last_per_class_present: dict = {cid: False for cid in topo_class_ids}
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -187,6 +192,11 @@ class TopologyLoss(nn.Module):
         probs = softmax_helper_dim1(net_output)  # (B, C, *spatial)
         losses = []
 
+        # Reset per-call diagnostics.
+        for cid in self.topo_class_ids:
+            self.last_per_class_loss[cid] = float('nan')
+            self.last_per_class_present[cid] = False
+
         for cid in self.topo_class_ids:
             if cid >= probs.shape[1]:
                 continue  # class index out of range
@@ -198,7 +208,10 @@ class TopologyLoss(nn.Module):
             if gt_c.sum() == 0:
                 continue
 
-            losses.append(self.cldice(pred_c, gt_c))
+            self.last_per_class_present[cid] = True
+            loss_c = self.cldice(pred_c, gt_c)
+            self.last_per_class_loss[cid] = float(loss_c.detach())
+            losses.append(loss_c)
 
         if len(losses) == 0:
             return torch.tensor(0.0, device=net_output.device, requires_grad=True)

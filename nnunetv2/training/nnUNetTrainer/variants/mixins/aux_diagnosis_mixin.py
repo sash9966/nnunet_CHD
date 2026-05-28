@@ -86,9 +86,20 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         self._bottleneck_features: Optional[torch.Tensor] = None
         # Exposed for downstream mixins / logging
         self.diagnosis_embedding: Optional[torch.Tensor] = None
-        # Accumulated per epoch for logging
+        # Per-epoch accumulators (cleared in mixin_on_train_epoch_end)
         self._aux_loss_accum: List[float] = []
         self._aux_pred_probs_accum: List[torch.Tensor] = []
+        # Silent-failure tracking: step counters per epoch
+        self._aux_steps_total: int = 0          # total train_step calls this epoch
+        self._aux_steps_contributing: int = 0   # steps where aux_loss actually fired
+        self._aux_skip_reason_counts: Dict[str, int] = {}  # skip reason -> count
+        # Multi-label classification accuracy accumulators (per epoch)
+        self._aux_correct_per_class: Optional[torch.Tensor] = None  # (K,)
+        self._aux_total_per_class: int = 0
+        self._aux_tp_per_class: Optional[torch.Tensor] = None  # for hit rate
+        self._aux_pos_per_class: Optional[torch.Tensor] = None  # GT positives
+        # Cumulative warning de-dup (avoid spamming on every batch)
+        self._aux_missing_keys_warned: set = set()
         # Separate disease map (only loaded when DiseaseConditioningMixin absent)
         self._aux_disease_map: Optional[Dict[str, List[int]]] = None
 
@@ -140,11 +151,27 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
     def mixin_extra_loss(self, output, target, batch: dict, **forward_kwargs) -> float:
         extra = super().mixin_extra_loss(output, target, batch, **forward_kwargs)
 
-        if self._bottleneck_features is None or self._diagnosis_head is None:
+        # Count every step that *reaches* this hook so we can compute a
+        # contributing-fraction diagnostic (catches silent-failure bugs like
+        # the previous _image-suffix issue where every step silently no-oped).
+        self._aux_steps_total += 1
+
+        if self._bottleneck_features is None:
+            self._aux_skip_reason_counts['no_bottleneck_features'] = (
+                self._aux_skip_reason_counts.get('no_bottleneck_features', 0) + 1
+            )
+            return extra
+        if self._diagnosis_head is None:
+            self._aux_skip_reason_counts['no_head'] = (
+                self._aux_skip_reason_counts.get('no_head', 0) + 1
+            )
             return extra
 
         disease_vec = self._resolve_disease_vec(batch["keys"])
         if disease_vec is None:
+            self._aux_skip_reason_counts['no_disease_vec'] = (
+                self._aux_skip_reason_counts.get('no_disease_vec', 0) + 1
+            )
             return extra
 
         # ── Spatial average pool: (B, C, [D,] H, W) → (B, C) ─────────────
@@ -165,11 +192,29 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         weighted = self.aux_loss_weight * aux_loss
 
         self._aux_loss_accum.append(aux_loss.item())
+        self._aux_steps_contributing += 1
 
-        # Accumulate per-class mean sigmoid probability for progress plot
+        # Accumulate per-class diagnostics (probs, accuracy, hit-rate)
         with torch.no_grad():
-            probs = torch.sigmoid(logits.detach().float()).mean(dim=0).cpu()
-        self._aux_pred_probs_accum.append(probs)
+            probs_tensor = torch.sigmoid(logits.detach().float())  # (B, K)
+            preds = (probs_tensor > 0.5).float()                   # (B, K)
+            gt = disease_vec.float()                               # (B, K)
+
+            self._aux_pred_probs_accum.append(probs_tensor.mean(dim=0).cpu())
+
+            correct = (preds == gt).float().sum(dim=0).cpu()       # (K,)
+            tp = (preds * gt).sum(dim=0).cpu()                     # (K,)
+            pos = gt.sum(dim=0).cpu()                              # (K,)
+            B = gt.size(0)
+
+            if self._aux_correct_per_class is None:
+                self._aux_correct_per_class = torch.zeros_like(correct)
+                self._aux_tp_per_class = torch.zeros_like(tp)
+                self._aux_pos_per_class = torch.zeros_like(pos)
+            self._aux_correct_per_class += correct
+            self._aux_tp_per_class += tp
+            self._aux_pos_per_class += pos
+            self._aux_total_per_class += B
 
         return extra + weighted
 
@@ -200,31 +245,101 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
     # ── Hook: log aux loss summary at epoch end ───────────────────────────
     def mixin_on_train_epoch_end(self, train_outputs):
         super().mixin_on_train_epoch_end(train_outputs)
-        if self._aux_loss_accum:
-            avg_aux = sum(self._aux_loss_accum) / len(self._aux_loss_accum)
-            avg_seg = float(
-                sum(o["loss"] for o in train_outputs) / len(train_outputs)
-            ) if train_outputs else float("nan")
-            self.print_to_log_file(
-                f"[AuxDiag] epoch {self.current_epoch}  "
-                f"seg_loss={avg_seg:.4f}  "
-                f"aux_bce={avg_aux:.4f}  "
-                f"aux_weighted={self.aux_loss_weight * avg_aux:.4f}"
-            )
 
-            # Log to logger for progress.png panel
+        steps_total = self._aux_steps_total
+        steps_contrib = self._aux_steps_contributing
+        contrib_frac = (steps_contrib / steps_total) if steps_total > 0 else 0.0
+
+        # Compute mean BCE / probs / accuracy if we have any contributing steps.
+        if steps_contrib > 0:
+            avg_aux = sum(self._aux_loss_accum) / len(self._aux_loss_accum)
             mean_probs = (
                 torch.stack(self._aux_pred_probs_accum).mean(dim=0).tolist()
                 if self._aux_pred_probs_accum else []
             )
-            self.logger.log(
-                'aux_diagnosis',
-                {'bce': avg_aux, 'probs': mean_probs},
-                self.current_epoch,
+            # Multi-label classification accuracy per class (over all samples)
+            denom = max(self._aux_total_per_class, 1)
+            acc_per_class = (self._aux_correct_per_class / denom).tolist()
+            overall_acc = float(sum(acc_per_class) / max(len(acc_per_class), 1))
+            # Per-class hit rate (recall): TP / positives
+            pos = self._aux_pos_per_class.clamp(min=1.0)
+            hit_per_class = (self._aux_tp_per_class / pos).tolist()
+            # Per-class GT base rate (fraction of samples positive)
+            base_rate = (self._aux_pos_per_class / denom).tolist()
+        else:
+            avg_aux = float('nan')
+            mean_probs = []
+            acc_per_class = []
+            overall_acc = float('nan')
+            hit_per_class = []
+            base_rate = []
+
+        avg_seg = float(
+            sum(o["loss"] for o in train_outputs) / len(train_outputs)
+        ) if train_outputs else float("nan")
+
+        # Loud warning if aux loss is silently dead.
+        if steps_total > 0 and contrib_frac < 1.0:
+            reasons = ', '.join(f"{k}={v}" for k, v in self._aux_skip_reason_counts.items())
+            self.print_to_log_file(
+                f"[AuxDiag][WARNING] epoch {self.current_epoch}  "
+                f"aux loss skipped on {steps_total - steps_contrib}/{steps_total} steps  "
+                f"(contributing_fraction={contrib_frac:.2f})  "
+                f"reasons: {reasons}"
             )
 
-            self._aux_loss_accum.clear()
-            self._aux_pred_probs_accum.clear()
+        if steps_total == 0:
+            # Mixin hook never fired — almost certainly a wiring bug.
+            self.print_to_log_file(
+                f"[AuxDiag][ERROR] epoch {self.current_epoch}  "
+                f"mixin_extra_loss was NEVER called this epoch — aux head is inactive."
+            )
+
+        if steps_contrib > 0:
+            self.print_to_log_file(
+                f"[AuxDiag] epoch {self.current_epoch}  "
+                f"seg_loss={avg_seg:.4f}  "
+                f"aux_bce={avg_aux:.4f}  "
+                f"aux_weighted={self.aux_loss_weight * avg_aux:.4f}  "
+                f"acc={overall_acc:.3f}  "
+                f"contrib={contrib_frac:.2f} ({steps_contrib}/{steps_total})"
+            )
+            # Class-level breakdown so user can see which diseases are learnt.
+            disease_names = ['HLHS', 'ASD', 'VSD', 'AVSD', 'DORV', 'PuA', 'ToF', 'TGA']
+            parts = []
+            for c, (a, h, br) in enumerate(zip(acc_per_class, hit_per_class, base_rate)):
+                name = disease_names[c] if c < len(disease_names) else f"c{c}"
+                parts.append(f"{name}:acc={a:.2f}/hit={h:.2f}/base={br:.2f}")
+            self.print_to_log_file(f"[AuxDiag/perClass] {' '.join(parts)}")
+
+        # Always log a record per epoch (even if the loss never fired) so the
+        # progress.png panel surfaces silent-failure runs as flat/NaN lines.
+        self.logger.log(
+            'aux_diagnosis',
+            {
+                'bce': avg_aux,
+                'probs': mean_probs,
+                'accuracy': overall_acc,
+                'acc_per_class': acc_per_class,
+                'hit_per_class': hit_per_class,
+                'base_rate_per_class': base_rate,
+                'contrib_frac': contrib_frac,
+                'steps_total': steps_total,
+                'steps_contrib': steps_contrib,
+            },
+            self.current_epoch,
+        )
+
+        # Reset per-epoch state.
+        self._aux_loss_accum.clear()
+        self._aux_pred_probs_accum.clear()
+        self._aux_steps_total = 0
+        self._aux_steps_contributing = 0
+        self._aux_skip_reason_counts.clear()
+        self._aux_correct_per_class = None
+        self._aux_tp_per_class = None
+        self._aux_pos_per_class = None
+        self._aux_total_per_class = 0
 
     # ── Private helpers ───────────────────────────────────────────────────
 
@@ -296,6 +411,14 @@ class AuxiliaryDiagnosisMixin(TrainerMixin):
         for case_id in batch_keys:
             case_id = case_id.removesuffix("_image")  # blosc2 identifiers include _image suffix
             if case_id not in dm:
+                if case_id not in self._aux_missing_keys_warned:
+                    self._aux_missing_keys_warned.add(case_id)
+                    self.print_to_log_file(
+                        f"[AuxDiag][WARNING] case_id '{case_id}' not found in "
+                        f"disease_map.json — aux loss will SKIP every batch "
+                        f"containing this case. Regenerate disease_map.json "
+                        f"with scripts/make_disease_map.py."
+                    )
                 return None  # skip batch if any key is missing
             vecs.append(dm[case_id][:K])
         return torch.tensor(vecs, dtype=torch.float32, device=self.device)

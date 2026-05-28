@@ -73,7 +73,11 @@ class nnUNetLogger(object):
                     and len(self.my_fantastic_logging['film_magnitudes']) > 0)
         has_aux = ('aux_diagnosis' in self.my_fantastic_logging
                    and len(self.my_fantastic_logging['aux_diagnosis']) > 0)
-        n_plots = 4 + int(has_film) + int(has_aux)
+        has_topo = ('topology' in self.my_fantastic_logging
+                    and len(self.my_fantastic_logging['topology']) > 0)
+        has_ca = ('cross_attention' in self.my_fantastic_logging
+                  and len(self.my_fantastic_logging['cross_attention']) > 0)
+        n_plots = 4 + int(has_film) + int(has_aux) + int(has_topo) + int(has_ca)
 
         sns.set(font_scale=2.5)
         fig, ax_all = plt.subplots(n_plots, 1, figsize=(30, 18 * n_plots))
@@ -187,16 +191,23 @@ class nnUNetLogger(object):
             aux_epoch = min(len(aux_data), epoch + 1)
             aux_x = list(range(aux_epoch))
 
-            # Left axis: BCE loss
-            bce_vals = [aux_data[e]['bce'] for e in range(aux_epoch)]
+            # Left axis: BCE loss + accuracy
+            bce_vals = [aux_data[e].get('bce', float('nan')) for e in range(aux_epoch)]
+            acc_vals = [aux_data[e].get('accuracy', float('nan')) for e in range(aux_epoch)]
+            contrib_vals = [aux_data[e].get('contrib_frac', float('nan')) for e in range(aux_epoch)]
             ax.plot(aux_x, bce_vals, color='black', ls='-', linewidth=3,
                     label='aux BCE loss')
             ax.set_xlabel("epoch")
             ax.set_ylabel("aux BCE loss")
             ax.set_ylim(bottom=0)
 
-            # Right axis: per-class mean predicted probability
+            # Right axis: accuracy + per-class probs + contributing-fraction band
             ax_r = ax.twinx()
+            ax_r.plot(aux_x, acc_vals, color='blue', ls='-', linewidth=3,
+                      label='multi-label accuracy')
+            ax_r.plot(aux_x, contrib_vals, color='red', ls='-', linewidth=2,
+                      label='loss-contributing fraction')
+
             disease_names = ['HLHS', 'ASD', 'VSD', 'AVSD', 'DORV', 'PuA', 'ToF', 'TGA']
             cmap = plt.cm.get_cmap('tab10', 8)
             for c in range(8):
@@ -205,17 +216,121 @@ class nnUNetLogger(object):
                     p = aux_data[e].get('probs', [])
                     probs.append(p[c] if c < len(p) else float('nan'))
                 label = disease_names[c] if c < len(disease_names) else f"class {c}"
-                ax_r.plot(aux_x, probs, color=cmap(c), ls='--', linewidth=2, label=label)
+                ax_r.plot(aux_x, probs, color=cmap(c), ls='--', linewidth=1.5, label=label)
             ax_r.axhline(0.5, color='gray', ls=':', linewidth=1)
-            ax_r.set_ylabel("mean predicted probability")
+            ax_r.set_ylabel("probability / accuracy / contrib_frac")
             ax_r.set_ylim([0, 1])
 
+            # Flag epochs where contributing fraction < 1: red shading.
+            for e, cf in enumerate(contrib_vals):
+                if cf is not None and not np.isnan(cf) and cf < 1.0:
+                    ax_r.axvspan(e - 0.5, e + 0.5, alpha=0.08, color='red')
+
             ax.set_title(
-                "Aux diagnosis head — BCE loss (black, left) + mean pred prob per disease (dashed, right)\n"
-                "BCE should decrease; probs should differ from 0.5 if the head is learning"
+                "Aux diagnosis head — BCE (black) | accuracy (blue solid) | "
+                "contrib_frac (red solid, must be 1.0) | per-class mean prob (dashed)\n"
+                "Red shading = epoch where some training steps did NOT compute aux loss "
+                "(silent failure)"
             )
             ax.legend(loc='upper right')
             ax_r.legend(loc='upper left', fontsize=11, ncol=2)
+
+        # Topology loss diagnostic (only for trainers with topology mixin)
+        if has_topo:
+            ax = ax_all[4 + int(has_film) + int(has_aux)]
+            topo_data = self.my_fantastic_logging['topology']
+            topo_epoch = min(len(topo_data), epoch + 1)
+            topo_x = list(range(topo_epoch))
+
+            # Left axis: per-class clDice loss
+            # Collect all class ids seen across epochs (entries may be empty dicts)
+            class_ids = set()
+            for e in range(topo_epoch):
+                pcl = topo_data[e].get('per_class_loss', {}) or {}
+                class_ids.update(pcl.keys())
+            class_ids = sorted(class_ids, key=lambda x: int(x))
+
+            cmap = plt.cm.get_cmap('Set1', max(len(class_ids), 3))
+            for ci, cid_str in enumerate(class_ids):
+                losses = []
+                for e in range(topo_epoch):
+                    pcl = topo_data[e].get('per_class_loss', {}) or {}
+                    losses.append(pcl.get(cid_str, float('nan')))
+                # Map class id to a friendly name when available
+                cid_int = int(cid_str)
+                if self.label_names is not None and 0 < cid_int <= len(self.label_names):
+                    name = self.label_names[cid_int - 1]
+                else:
+                    name = f"cid={cid_str}"
+                ax.plot(topo_x, losses, color=cmap(ci), ls='-', linewidth=3,
+                        label=f"{name} cldice")
+            ax.set_xlabel("epoch")
+            ax.set_ylabel("soft clDice loss (lower = better topology)")
+            ax.set_ylim(bottom=0)
+
+            # Right axis: per-class presence rate + global weight
+            ax_r = ax.twinx()
+            for ci, cid_str in enumerate(class_ids):
+                presences = []
+                for e in range(topo_epoch):
+                    pcp = topo_data[e].get('per_class_present', {}) or {}
+                    presences.append(pcp.get(cid_str, float('nan')))
+                cid_int = int(cid_str)
+                if self.label_names is not None and 0 < cid_int <= len(self.label_names):
+                    name = self.label_names[cid_int - 1]
+                else:
+                    name = f"cid={cid_str}"
+                ax_r.plot(topo_x, presences, color=cmap(ci), ls=':', linewidth=2,
+                          label=f"{name} GT-present")
+            weights = [topo_data[e].get('weight', float('nan')) for e in range(topo_epoch)]
+            ax_r.plot(topo_x, weights, color='black', ls='--', linewidth=2,
+                      label='topo_weight schedule')
+            ax_r.set_ylabel("GT-presence rate / topo_weight")
+            ax_r.set_ylim([0, max(1.0, max([w for w in weights
+                                            if w is not None and not np.isnan(w)] + [0.0]) * 1.1)])
+
+            ax.set_title(
+                "Topology loss — per-class soft clDice (solid, left) | "
+                "per-class GT presence rate (dotted, right) | weight schedule (black dashed)\n"
+                "Falling clDice = topology improving; low presence = class rarely sampled in patches"
+            )
+            ax.legend(loc='upper right', fontsize=12)
+            ax_r.legend(loc='upper left', fontsize=11, ncol=2)
+
+        # Cross-attention entropy diagnostic (only for cross-attn trainers)
+        if has_ca:
+            ax = ax_all[4 + int(has_film) + int(has_aux) + int(has_topo)]
+            ca_data = self.my_fantastic_logging['cross_attention']
+            ca_epoch = min(len(ca_data), epoch + 1)
+            ca_x = list(range(ca_epoch))
+
+            # Gather all stage indices across epochs
+            stage_ids = set()
+            for e in range(ca_epoch):
+                pse = ca_data[e].get('per_stage_entropy', {}) or {}
+                stage_ids.update(pse.keys())
+            stage_ids = sorted(stage_ids, key=lambda s: int(s))
+            cmap = plt.cm.get_cmap('viridis', max(len(stage_ids), 3))
+            for si, s_idx in enumerate(stage_ids):
+                ents = []
+                for e in range(ca_epoch):
+                    pse = ca_data[e].get('per_stage_entropy', {}) or {}
+                    ents.append(pse.get(s_idx, float('nan')))
+                ax.plot(ca_x, ents, color=cmap(si), ls='-', linewidth=3,
+                        label=f"stage {s_idx}")
+
+            # Reference line for max possible entropy
+            max_ents = [ca_data[e].get('max_entropy', float('nan')) for e in range(ca_epoch)]
+            ax.plot(ca_x, max_ents, color='red', ls='--', linewidth=2,
+                    label='uniform attention (max entropy)')
+            ax.set_xlabel("epoch")
+            ax.set_ylabel("mean attention entropy (nats)")
+            ax.set_title(
+                "Cross-attention entropy per decoder stage — lower = more selective conditioning, "
+                "high = pad-token collapse / uninformative"
+            )
+            ax.legend(loc='upper right', fontsize=12, ncol=2)
+            ax.set_ylim(bottom=0)
 
         plt.tight_layout()
 

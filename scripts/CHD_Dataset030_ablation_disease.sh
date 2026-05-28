@@ -1,30 +1,32 @@
 #!/bin/bash
 # =============================================================================
-#  CHD_Dataset030_CrossAttn.sh
-#  Dataset030_imageCHD_HU — Cross-attention conditioning ablation, 200 epochs
+#  CHD_Dataset030_ablation_disease.sh   (Job 2 of 3)
+#  Dataset030_imageCHD_HU — Disease conditioning alone (no topology)
+#  Fold 0, 200 epochs
 #
-#  Tests spatially-localised disease conditioning via per-stage cross-attention
-#  against FiLM (global bottleneck modulation) and the baseline.
+#  Companion scripts:
+#    Job 1: CHD_Dataset030_ablation_topo.sh   (B1, B2, T1, T2, T3)
+#    Job 3: CHD_Dataset030_ablation_combos.sh (C1, C2, C3, C4, C5)
 #
-#  Experiments (3d_fullres, 5-fold ensemble):
-#    1. CrossAttn         — DA5 + cross-attn at every decoder stage
-#    2. CrossAttnTopo     — DA5 + cross-attn + soft-clDice on AO/PA
-#    3. AuxDiagCrossAttn  — DA5 + bottleneck aux head + cross-attn (embedding reuse)
+#  ─── Rows trained here ───────────────────────────────────────────────────
+#  ID    Trainer                                    Config         Inference path
+#  ────  ─────────────────────────────────────────  ─────────────  ───────────────────────
+#  D1    DA5FiLMV3_200e                             3d_fullres     predict_disease_conditioned
+#  D2    DA5AuxDiag_200e                            3d_fullres     nnUNetv2_predict (training-only aux)
+#  D3    DA5CrossAttn_200e                          3d_fullres     predict_disease_conditioned
 #
-#  Attention entropy is logged every 50 steps per decoder stage in the training
-#  log — low entropy → selective disease-token attention (good conditioning).
-#
-#  Requires:
-#    - disease_map.json in ${nnUNet_preprocessed}/Dataset030_imageCHD_HU/
-#    - Preprocessing already done (CHD_Dataset030_imageCHD.sh Phase 0, or run fresh)
+#  Total: 3 fullres trainings, 3 inferences
+#  Approx 45h walltime — likely fits in one 48h SLURM slot but resume-safe if not.
 #
 #  RESUME SUPPORT
-#    Checkpoint dir: ${nnUNet_results}/Dataset030_imageCHD_HU/.checkpoints/CHD_Dataset030_CrossAttn/
+#    Same as sibling scripts: .done markers per step, nnU-Net auto-resumes
+#    interrupted training, preprocess + disease_map markers live in SHARED.
+#    Local checkpoint dir: ${nnUNet_results}/Dataset030_imageCHD_HU/.checkpoints/CHD_Dataset030_ablation_disease/
 #
 #  Before first submission:
 #    mkdir -p /scratch/users/sastocke/nnunet_CHD/logs
 # =============================================================================
-#SBATCH --job-name=D030-xattn
+#SBATCH --job-name=D030-abl-disease
 #SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -34,8 +36,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
-#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D030-xattn_%j.out
-#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D030-xattn_%j.err
+#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-disease_%j.out
+#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-disease_%j.err
 
 set -euo pipefail
 
@@ -64,15 +66,21 @@ PLANS="nnUNetResEncUNetMPlans"
 FULLRES="3d_fullres"
 REPO="/scratch/users/sastocke/nnunet_CHD"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
-PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
-CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset030_CrossAttn"
+PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions_ablation"
+CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset030_ablation_disease"
 SHARED_CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/shared"
 START_TS=$(date +%s)
 
-TRAINERS=(
-    "nnUNetTrainerDA5CrossAttn_200epochs"
-    "nnUNetTrainerDA5CrossAttnTopo_200epochs"
-    "nnUNetTrainerDA5AuxDiagCrossAttn_200epochs"
+# Parallel arrays: trainer + inference mode ("plain" = nnUNetv2_predict, "cond" = disease-conditioned)
+FULLRES_TRAINERS=(
+    "nnUNetTrainerDA5FiLMV3_200epochs"            # D1
+    "nnUNetTrainerDA5AuxDiag_200epochs"           # D2
+    "nnUNetTrainerDA5CrossAttn_200epochs"         # D3
+)
+FULLRES_INFER_MODES=(
+    "cond"    # D1: FiLM needs disease vec
+    "plain"   # D2: AuxDiag is training-only
+    "cond"    # D3: CrossAttn needs disease vec
 )
 
 # ─────────────────────────────────────────────
@@ -93,7 +101,6 @@ verify_preprocessing() {
     prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*_${cfg}" 2>/dev/null | head -1)
     if [[ -z "${prep_dir}" ]]; then
         echo "ERROR: No preprocessed directory found for ${cfg}."
-        echo "  Looked in: ${nnUNet_preprocessed}/${DATASET_NAME}/*_${cfg}"
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
         exit 1
     fi
@@ -101,7 +108,6 @@ verify_preprocessing() {
     echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${prep_dir}"
     if [[ ${n_prep} -lt ${n_raw} ]]; then
         echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
-        echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
         exit 1
     fi
 }
@@ -112,29 +118,24 @@ verify_preprocessing() {
 print_banner() {
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║  CHD_Dataset030_CrossAttn.sh  — START                          ║"
+    echo "║  CHD_Dataset030_ablation_disease.sh  — START  (Job 2 of 3)      ║"
     echo "╠══════════════════════════════════════════════════════════════════╣"
     printf "║  %-66s ║\n" "Date/Time  : $(date '+%Y-%m-%d %H:%M:%S')"
     printf "║  %-66s ║\n" "SLURM Job  : ${SLURM_JOB_ID:-manual}  node=${SLURMD_NODENAME:-local}"
     printf "║  %-66s ║\n" "Dataset    : ${DATASET_NAME}  (ID=${DATASET_ID})"
-    printf "║  %-66s ║\n" "Plans      : ${PLANS}"
-    printf "║  %-66s ║\n" "Config     : ${FULLRES}  |  Folds: 0 1 2 3 4"
-    printf "║  %-66s ║\n" "Epochs     : 200"
+    printf "║  %-66s ║\n" "Fold       : 0  |  Epochs: 200"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Exp 1  DA5CrossAttn_200e         (cross-attn only)"
-    printf "║  %-66s ║\n" "Exp 2  DA5CrossAttnTopo_200e     (cross-attn + clDice)"
-    printf "║  %-66s ║\n" "Exp 3  DA5AuxDiagCrossAttn_200e  (aux head + cross-attn)"
+    printf "║  %-66s ║\n" "Trainings  : 3 fullres (D1, D2, D3)"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Attention entropy logged every 50 steps in training log."
-    printf "║  %-66s ║\n" "  Low entropy -> selective disease-token attention (good)"
-    printf "║  %-66s ║\n" "  High entropy -> uniform (ln(8)=2.08, FiLM-like)"
+    printf "║  %-66s ║\n" "D1  DA5FiLMV3_200e         (FiLM bottleneck conditioning)"
+    printf "║  %-66s ║\n" "D2  DA5AuxDiag_200e        (training-only encoder regulariser)"
+    printf "║  %-66s ║\n" "D3  DA5CrossAttn_200e      (per-stage cross-attention)"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Raw data   : ${IN_DIR}"
-    printf "║  %-66s ║\n" "Results    : ${nnUNet_results}/${DATASET_NAME}"
+    printf "║  %-66s ║\n" "Inference  : ${PRED_BASE}"
     printf "║  %-66s ║\n" "Checkpoint : ${CKPT_DIR}"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo ""
-    echo "  Completed steps (from previous runs, if any):"
+    echo "  Completed steps from previous runs (.done markers):"
     ls "${CKPT_DIR}/"*.done 2>/dev/null \
         | xargs -I{} basename {} .done \
         | sort | sed 's/^/    [DONE] /' \
@@ -149,49 +150,67 @@ print_footer() {
     local ss=$(( elapsed % 60 ))
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║  CHD_Dataset030_CrossAttn.sh  — COMPLETE                       ║"
+    echo "║  CHD_Dataset030_ablation_disease.sh  — END  (Job 2 of 3)        ║"
     echo "╠══════════════════════════════════════════════════════════════════╣"
     printf "║  %-66s ║\n" "Date/Time  : $(date '+%Y-%m-%d %H:%M:%S')"
-    printf "║  %-66s ║\n" "SLURM Job  : ${SLURM_JOB_ID:-manual}"
-    printf "║  %-66s ║\n" "Dataset    : ${DATASET_NAME}  (ID=${DATASET_ID})"
     printf "║  %-66s ║\n" "Elapsed    : ${hh}h ${mm}m ${ss}s"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Inference results in: ${PRED_BASE}/"
-    for TR in "${TRAINERS[@]}"; do
-        printf "║    %-64s ║\n" "$(sk ${TR})"
-    done
-    printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Compare DSC vs DA5 baseline, FiLMV3, and AuxDiag."
-    printf "║  %-66s ║\n" "Check attention entropy in training logs to confirm"
-    printf "║  %-66s ║\n" "the model is learning selective disease attention."
+    printf "║  %-66s ║\n" "If incomplete: resubmit this script — it resumes automatically"
     echo "╚══════════════════════════════════════════════════════════════════╝"
+}
+
+# ─────────────────────────────────────────────
+# 5.  Inference dispatcher
+# ─────────────────────────────────────────────
+infer_fullres() {
+    # $1 = trainer class, $2 = infer mode ("plain"|"cond"), $3 = output subdir name
+    local TRAINER=$1
+    local MODE=$2
+    local OUT_NAME=$3
+    local OUT_DIR="${PRED_BASE}/${OUT_NAME}"
+    local MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
+    mkdir -p "${OUT_DIR}"
+    if [[ "${MODE}" == "cond" ]]; then
+        python -m nnunetv2.inference.predict_disease_conditioned \
+            -i "${IN_DIR}" \
+            -o "${OUT_DIR}" \
+            -m "${MODEL_DIR}" \
+            -f 0
+    else
+        nnUNetv2_predict \
+            -i "${IN_DIR}" -o "${OUT_DIR}" \
+            -d ${DATASET_ID} -c ${FULLRES} \
+            -f 0 \
+            -tr ${TRAINER} -p ${PLANS}
+    fi
 }
 
 # ─────────────────────────────────────────────
 # START
 # ─────────────────────────────────────────────
 print_banner
+mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Preprocess (skip if done by CHD_Dataset030_imageCHD.sh)
+# Phase 0 — Plan and preprocess (shared with sibling jobs; only fullres needed here)
 # ─────────────────────────────────────────────
-if shared_is_done "p0_preprocess"; then
+if shared_is_done "p0_preprocess_all3"; then
     echo "[SKIP] Phase 0: preprocess already done (shared marker)"
 else
     echo "================================================================"
-    echo "Phase 0: plan_and_preprocess — ${FULLRES}"
+    echo "Phase 0: plan_and_preprocess — ${FULLRES} (and lowres/cascade for sibling jobs)"
     echo "================================================================"
     nnUNetv2_plan_and_preprocess \
         -d ${DATASET_ID} \
         -pl ${PLANNER} \
-        -c ${FULLRES} \
+        -c ${FULLRES} 3d_lowres 3d_cascade_fullres \
         --verify_dataset_integrity
-    shared_mark_done "p0_preprocess"
+    shared_mark_done "p0_preprocess_all3"
 fi
 verify_preprocessing "${FULLRES}"
 
 # ─────────────────────────────────────────────
-# Phase 0b — Build disease_map.json from diagnosis CSV
+# Phase 0b — Build disease_map.json (shared with sibling jobs)
 # ─────────────────────────────────────────────
 if shared_is_done "p0b_disease_map"; then
     echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
@@ -206,52 +225,39 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# Phase 1 — Training: 3 trainers x 5 folds
+# Phase 1 — Fullres trainings (D1, D2, D3)
 # ─────────────────────────────────────────────
 echo "================================================================"
-echo "Phase 1: Fullres training — ${#TRAINERS[@]} trainers x 5 folds"
+echo "Phase 1: Fullres training — ${#FULLRES_TRAINERS[@]} trainers, fold 0"
 echo "================================================================"
-for TRAINER in "${TRAINERS[@]}"; do
-    for FOLD in 0; do
-        KEY="p1_$(sk ${TRAINER})_fold${FOLD}"
-        if is_done "${KEY}"; then
-            echo "[SKIP] ${KEY}"
-        else
-            echo "--- ${KEY} ---"
-            nnUNetv2_train ${DATASET_ID} ${FULLRES} ${FOLD} \
-                -tr ${TRAINER} -p ${PLANS} --npz
-            mark_done "${KEY}"
-        fi
-    done
-done
-
-# ─────────────────────────────────────────────
-# Phase 2 — Inference on test set (fold 0)
-# ─────────────────────────────────────────────
-# All CrossAttn trainers need per-case disease vectors during inference
-# (cross-attention layers receive disease-token embeddings). Using
-# predict_disease_conditioned.py which auto-loads disease_map.json from
-# the model folder (copied there at train start) and sets the disease
-# vector before each case.
-echo "================================================================"
-echo "Phase 2: Inference on test set — fold 0"
-echo "================================================================"
-mkdir -p "${PRED_BASE}"
-
-for TRAINER in "${TRAINERS[@]}"; do
-    KEY="p2_infer_$(sk ${TRAINER})"
-    OUT_DIR="${PRED_BASE}/$(sk ${TRAINER})"
-    MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
-    mkdir -p "${OUT_DIR}"
+for TRAINER in "${FULLRES_TRAINERS[@]}"; do
+    KEY="p1_fullres_$(sk ${TRAINER})_fold0"
     if is_done "${KEY}"; then
         echo "[SKIP] ${KEY}"
     else
         echo "--- ${KEY} ---"
-        python -m nnunetv2.inference.predict_disease_conditioned \
-            -i "${IN_DIR}" \
-            -o "${OUT_DIR}" \
-            -m "${MODEL_DIR}" \
-            -f 0
+        nnUNetv2_train ${DATASET_ID} ${FULLRES} 0 \
+            -tr ${TRAINER} -p ${PLANS} --npz
+        mark_done "${KEY}"
+    fi
+done
+
+# ─────────────────────────────────────────────
+# Phase 1b — Inference on imagesTs
+# ─────────────────────────────────────────────
+echo "================================================================"
+echo "Phase 1b: Inference — fullres trainers on imagesTs"
+echo "================================================================"
+for i in "${!FULLRES_TRAINERS[@]}"; do
+    TRAINER="${FULLRES_TRAINERS[$i]}"
+    MODE="${FULLRES_INFER_MODES[$i]}"
+    OUT_NAME="$(sk ${TRAINER})"
+    KEY="p1b_infer_${OUT_NAME}"
+    if is_done "${KEY}"; then
+        echo "[SKIP] ${KEY}"
+    else
+        echo "--- ${KEY}  (mode=${MODE}) ---"
+        infer_fullres "${TRAINER}" "${MODE}" "${OUT_NAME}"
         mark_done "${KEY}"
     fi
 done
