@@ -62,6 +62,11 @@ source /oak/stanford/groups/amarsden/sastocke/miniconda/etc/profile.d/conda.sh
 conda activate /scratch/users/sastocke/conda_envs/nnunet310
 hash -r
 
+# PROJECT ISOLATION CONTRACT: these roots are EXCLUSIVE to the CHD nnU-Net
+# project. Any other project (e.g. MedDINO) MUST use a DIFFERENT
+# nnUNet_preprocessed / nnUNet_results, or the two will corrupt each other's
+# preprocessed data and plans. This script is a READ-ONLY consumer — it never
+# runs plan_and_preprocess; preprocess once up front before submitting jobs.
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
@@ -177,52 +182,35 @@ print_banner
 mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Plan and preprocess
+# Phase 0 — Precondition: dataset must already be preprocessed (READ-ONLY)
 # ─────────────────────────────────────────────
-_prep_check="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
-# Guard the find: running it on a non-existent dir returns exit 1, which under
-# set -euo pipefail propagates through the command substitution and kills the
-# script SILENTLY (no error message). Only run find when the dir exists.
-if [[ -d "${_prep_check}" ]]; then
-    _n_prep_check=$(find "${_prep_check}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
-else
-    _n_prep_check=0
-fi
-if [[ ${_n_prep_check} -gt 0 ]]; then
-    echo "[SKIP] Phase 0: ${_n_prep_check} cases already in ${PLANS}_${FULLRES}"
-    shared_mark_done "p0_preprocess_all3"
-else
-    echo "================================================================"
-    echo "Phase 0: plan_and_preprocess — ${FULLRES} | ${LOWRES} | ${CASCADE}"
-    echo "================================================================"
-    nnUNetv2_plan_and_preprocess \
-        -d ${DATASET_ID} \
-        -pl ${PLANNER} \
-        -c ${FULLRES} ${LOWRES} ${CASCADE} \
-        --verify_dataset_integrity
-    shared_mark_done "p0_preprocess_all3"
-fi
+# This script does NOT preprocess. Preprocessing (plan_and_preprocess +
+# disease_map) is destructive shared-state and must be done once, up front,
+# before submitting. Keeping it out of the training scripts is what
+# lets multiple jobs — and separate projects on the same dataset — coexist
+# without corrupting each other's preprocessed data and plans.
+require_prepared() {
+    local fr="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
+    local n=0
+    [[ -d "${fr}" ]] && n=$(find "${fr}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+    if [[ "${n}" -lt 1 ]]; then
+        echo "ERROR: ${DATASET_NAME} is not preprocessed (no .b2nd in ${PLANS}_${FULLRES})."
+        echo "  This training script is a READ-ONLY consumer and never preprocesses."
+        echo "  Preprocess this dataset ONCE first (destructive shared state — must"
+        echo "  not run inside concurrent training jobs):"
+        echo "    nnUNetv2_plan_and_preprocess -d ${DATASET_ID} -pl ${PLANNER} \\"
+        echo "        -c 3d_fullres 3d_lowres 3d_cascade_fullres --verify_dataset_integrity"
+        exit 1
+    fi
+    if [[ ! -f "${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json" ]]; then
+        echo "[WARN] disease_map.json missing — stratified eval unavailable."
+        echo "       (build it: python scripts/make_disease_map.py --dataset-id ${DATASET_ID} --csv-name imageCHD_dataset_info.xlsx)"
+    fi
+    echo "[OK] ${DATASET_NAME}: ${n} preprocessed cases present — proceeding (read-only)."
+}
+require_prepared
 verify_preprocessing "${FULLRES}"
 verify_preprocessing "${LOWRES}"
-
-# ─────────────────────────────────────────────
-# Phase 0b — Build disease_map.json for Dataset040 (stratified eval only)
-# ─────────────────────────────────────────────
-if shared_is_done "p0b_disease_map_d40"; then
-    echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
-else
-    echo "================================================================"
-    echo "Phase 0b: Build disease_map.json (for stratified eval)"
-    echo "================================================================"
-    # The xlsx lives next to Dataset030's raw folder; case IDs are the same so
-    # the same map is valid for Dataset040.  make_disease_map.py auto-locates
-    # the xlsx via the dataset ID's raw folder.
-    python "${REPO}/scripts/make_disease_map.py" \
-        --dataset-id ${DATASET_ID} \
-        --csv-name imageCHD_dataset_info.xlsx || \
-    echo "[WARN] disease_map.json build failed — stratified eval will be unavailable. Continuing."
-    shared_mark_done "p0b_disease_map_d40"
-fi
 
 # ─────────────────────────────────────────────
 # Phase 1 — Fullres DA5 training

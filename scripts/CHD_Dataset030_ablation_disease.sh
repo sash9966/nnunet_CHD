@@ -50,6 +50,11 @@ source /oak/stanford/groups/amarsden/sastocke/miniconda/etc/profile.d/conda.sh
 conda activate /scratch/users/sastocke/conda_envs/nnunet310
 hash -r
 
+# PROJECT ISOLATION CONTRACT: these roots are EXCLUSIVE to the CHD nnU-Net
+# project. Any other project (e.g. MedDINO) MUST use a DIFFERENT
+# nnUNet_preprocessed / nnUNet_results, or the two will corrupt each other's
+# preprocessed data and plans. This script is a READ-ONLY consumer — it never
+# runs plan_and_preprocess; preprocess once up front before submitting jobs.
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
@@ -193,93 +198,32 @@ print_banner
 mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 + 0b — Shared setup (preprocess + disease_map), cross-job serialised
+# Phase 0 — Precondition: dataset must already be preprocessed (READ-ONLY)
 # ─────────────────────────────────────────────
-# The three D030 ablation jobs share ONE preprocessed directory and ONE
-# disease_map.json. Running them at the same time without coordination makes two
-# processes write the same .b2nd files concurrently -> blosc2 "Error while
-# setting the slice" corruption. We serialise shared setup with an atomic mkdir
-# lock (reliable across nodes on Lustre): the first job in runs preprocess +
-# disease map; the others block on its completion marker, then skip straight to
-# training. NOTE: a waiting job holds its GPU idle (~1-2h) while the winner
-# preprocesses — submit staggered if you'd rather not park two GPUs meanwhile.
-_n_raw_p0=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000" || true)
-_lockdir="${SHARED_CKPT_DIR}/p0_setup.lockdir"
-
-_count_b2nd() {
-    if [[ -d "$1" ]]; then
-        find "$1" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l
-    else
-        echo 0
+# This script does NOT preprocess. Preprocessing is destructive shared-state and
+# must be done once, up front, before submitting. That separation is what
+# makes it safe to run this and its sibling ablation scripts concurrently: each
+# only reads the preprocessed dir and writes its own unique results folders.
+require_prepared() {
+    local fr="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
+    local n=0
+    [[ -d "${fr}" ]] && n=$(find "${fr}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+    if [[ "${n}" -lt 1 ]]; then
+        echo "ERROR: ${DATASET_NAME} is not preprocessed (no .b2nd in ${PLANS}_${FULLRES})."
+        echo "  This training script is a READ-ONLY consumer and never preprocesses."
+        echo "  Preprocess this dataset ONCE first (destructive shared state — must"
+        echo "  not run inside concurrent training jobs):"
+        echo "    nnUNetv2_plan_and_preprocess -d ${DATASET_ID} -pl ${PLANNER} \\"
+        echo "        -c 3d_fullres 3d_lowres 3d_cascade_fullres --verify_dataset_integrity"
+        exit 1
     fi
-}
-# All preprocessed configs (fullres + lowres) must be fully present: the shared
-# marker means all configs are done, and the lock winner preprocesses all of them.
-_preprocess_complete() {
-    [[ "${_n_raw_p0}" -gt 0 ]] || return 1
-    [[ "$(_count_b2nd "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}")" -ge "${_n_raw_p0}" ]] || return 1
-    [[ "$(_count_b2nd "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_3d_lowres")" -ge "${_n_raw_p0}" ]] || return 1
-    return 0
-}
-do_preprocess() {
-    if shared_is_done "p0_preprocess_all3"; then
-        echo "[SKIP] Phase 0: preprocess marker present"
-    elif _preprocess_complete; then
-        echo "[SKIP] Phase 0: all ${_n_raw_p0} cases already preprocessed — recording marker"
-        shared_mark_done "p0_preprocess_all3"
-    else
-        echo "================================================================"
-        echo "Phase 0: plan_and_preprocess — ${FULLRES} (and lowres/cascade for sibling jobs)"
-        echo "================================================================"
-        nnUNetv2_plan_and_preprocess \
-            -d ${DATASET_ID} \
-            -pl ${PLANNER} \
-            -c ${FULLRES} 3d_lowres 3d_cascade_fullres \
-            --verify_dataset_integrity
-        shared_mark_done "p0_preprocess_all3"
+    if [[ ! -f "${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json" ]]; then
+        echo "[WARN] disease_map.json missing — stratified eval unavailable."
+        echo "       (build it: python scripts/make_disease_map.py --dataset-id ${DATASET_ID} --csv-name imageCHD_dataset_info.xlsx)"
     fi
+    echo "[OK] ${DATASET_NAME}: ${n} preprocessed cases present — proceeding (read-only)."
 }
-do_disease_map() {
-    if shared_is_done "p0b_disease_map"; then
-        echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
-    else
-        echo "================================================================"
-        echo "Phase 0b: Build disease_map.json"
-        echo "================================================================"
-        python "${REPO}/scripts/make_disease_map.py" \
-            --dataset-id ${DATASET_ID} \
-            --csv-name imageCHD_dataset_info.xlsx
-        shared_mark_done "p0b_disease_map"
-    fi
-}
-
-if shared_is_done "p0_setup_complete"; then
-    echo "[SKIP] Phase 0/0b: shared setup already complete (marker present)"
-elif mkdir "${_lockdir}" 2>/dev/null; then
-    echo "Phase 0/0b: acquired shared-setup lock (${_lockdir})"
-    trap 'rmdir "${_lockdir}" 2>/dev/null || true' EXIT
-    do_preprocess
-    do_disease_map
-    shared_mark_done "p0_setup_complete"
-    rmdir "${_lockdir}" 2>/dev/null || true
-    trap - EXIT
-else
-    echo "Phase 0/0b: another job holds the setup lock — waiting for it to finish..."
-    _waited=0
-    while ! shared_is_done "p0_setup_complete"; do
-        sleep 30
-        _waited=$((_waited + 30))
-        if (( _waited % 300 == 0 )); then
-            echo "  ... still waiting for sibling setup (${_waited}s elapsed)"
-        fi
-        if [[ ${_waited} -ge 10800 ]]; then
-            echo "ERROR: waited 3h for sibling shared-setup; aborting."
-            echo "  If no sibling is running, remove the stale lock: rmdir ${_lockdir}"
-            exit 1
-        fi
-    done
-    echo "Phase 0/0b: sibling completed shared setup after ${_waited}s — proceeding"
-fi
+require_prepared
 verify_preprocessing "${FULLRES}"
 
 # ─────────────────────────────────────────────
