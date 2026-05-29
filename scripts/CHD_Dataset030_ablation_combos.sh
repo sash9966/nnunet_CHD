@@ -37,8 +37,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
-#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-combos_%j.out
-#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-combos_%j.err
+# stdout + stderr merged into ONE file (no separate .err) so every error is visible in one place
+#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-combos_%j.log
 
 set -euo pipefail
 
@@ -204,33 +204,16 @@ print_banner
 mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Precondition: dataset must already be preprocessed (READ-ONLY)
+# Phase 0 — none. This script does NOT preprocess (read-only consumer).
 # ─────────────────────────────────────────────
-# This script does NOT preprocess. Preprocessing is destructive shared-state and
-# must be done once, up front, before submitting. That separation is what
-# makes it safe to run this and its sibling ablation scripts concurrently: each
-# only reads the preprocessed dir and writes its own unique results folders.
-require_prepared() {
-    local fr="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
-    local n=0
-    [[ -d "${fr}" ]] && n=$(find "${fr}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
-    if [[ "${n}" -lt 1 ]]; then
-        echo "ERROR: ${DATASET_NAME} is not preprocessed (no .b2nd in ${PLANS}_${FULLRES})."
-        echo "  This training script is a READ-ONLY consumer and never preprocesses."
-        echo "  Preprocess this dataset ONCE first (destructive shared state — must"
-        echo "  not run inside concurrent training jobs):"
-        echo "    nnUNetv2_plan_and_preprocess -d ${DATASET_ID} -pl ${PLANNER} \\"
-        echo "        -c 3d_fullres 3d_lowres 3d_cascade_fullres --verify_dataset_integrity"
-        exit 1
-    fi
-    if [[ ! -f "${nnUNet_preprocessed}/${DATASET_NAME}/disease_map.json" ]]; then
-        echo "[WARN] disease_map.json missing — stratified eval unavailable."
-        echo "       (build it: python scripts/make_disease_map.py --dataset-id ${DATASET_ID} --csv-name imageCHD_dataset_info.xlsx)"
-    fi
-    echo "[OK] ${DATASET_NAME}: ${n} preprocessed cases present — proceeding (read-only)."
-}
-require_prepared
-verify_preprocessing "${FULLRES}"
+# Preprocess ONCE up front before submitting (it is destructive shared state):
+#   nnUNetv2_plan_and_preprocess -d 30 -pl nnUNetPlannerResEncM \
+#       -c 3d_fullres 3d_lowres 3d_cascade_fullres --verify_dataset_integrity
+# No preprocessed-folder check here on purpose: nnU-Net stores each config under
+# its own data_identifier (fullres -> nnUNetPlans_3d_fullres, lowres ->
+# nnUNetResEncUNetMPlans_3d_lowres), so guessing the folder name is unreliable
+# and was falsely failing valid runs. nnUNetv2_train validates the preprocessed
+# data itself and errors clearly if it is genuinely missing.
 
 # ─────────────────────────────────────────────
 # Phase 1 — Fullres trainings (C1, C2, C3, C4, C5)
