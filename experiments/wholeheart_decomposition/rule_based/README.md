@@ -1,5 +1,11 @@
 # Approach D — Rule-based heuristic decomposition
 
+> Anatomy, soft topology priors, disease-conditioned overrides, and the AO/PA
+> feature list live in [`../STAGE2_SPEC.md`](../STAGE2_SPEC.md) +
+> [`../anatomy_priors.yaml`](../anatomy_priors.yaml). Encode disease rules
+> (TGA/DORV/ToF/PuA/HLHS) by reading the YAML, not by hand-wiring `if
+> disease["TGA"]:` branches.
+
 **Goal.** Hand-coded labelling driven by anatomy + topology. Slow to
 build *correctly*, but always interpretable and useful both as a baseline
 and as a feature for the learned methods (Approach C in particular).

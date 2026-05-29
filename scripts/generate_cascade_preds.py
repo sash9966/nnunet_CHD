@@ -62,7 +62,7 @@ def generate_cascade_preds(
     # 1.  Instantiate and restore the lowres trainer
     # ------------------------------------------------------------------ #
     trainer = get_trainer_from_args(
-        dataset_name_or_id, "3d_lowres", fold, lowres_trainer_name, plans_identifier,
+        dataset_name, "3d_lowres", fold, lowres_trainer_name, plans_identifier,
         device=torch_device,
     )
 

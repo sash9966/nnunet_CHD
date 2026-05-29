@@ -1,5 +1,11 @@
 # Approach E — MedSAM / SAM / 3D Slicer interactive
 
+> Anatomy + HITL spec (box-prompted correction, centerline seeds,
+> active-learning capture format) lives in
+> [`../STAGE2_SPEC.md`](../STAGE2_SPEC.md) §5. MedSAM proposals are
+> **correction candidates, not ground truth** — they go through the same
+> capture format as Segment Editor corrections.
+
 **Goal.** Use a promptable foundation model (MedSAM, SAM-Med3D, MONAI
 SAM-style) to label individual chambers and vessels inside the binary
 mask given a single click / scribble per structure.

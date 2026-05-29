@@ -1,5 +1,11 @@
 # Whole-Heart Decomposition — Stage 2
 
+> **Read first:** [`STAGE2_SPEC.md`](STAGE2_SPEC.md) — canonical anatomy
+> (class 7 = pulmonary artery, not pulmonary veins), soft topology priors,
+> disease-conditioned overrides for TGA/DORV/ToF/PuA/HLHS, AO-vs-PA feature
+> menu, and the HITL capture format. Machine-readable mirror in
+> [`anatomy_priors.yaml`](anatomy_priors.yaml).
+
 The Stage-1 pipeline (`scripts/CHD_Dataset040_wholeheart.sh`) produces a clean,
 topology-preserving **binary heart vs. not-heart** mask for every test case.
 Stage 2 takes that mask and assigns the original 7 anatomical classes
@@ -18,6 +24,26 @@ the Stage-1 evaluation:
 | [`medsam_slicer/`](medsam_slicer/README.md) | MedSAM / SAM-style interactive correction inside 3D Slicer | If a clinical user needs to hand-correct cases; Stage 2 becomes assistive rather than fully automatic |
 | [`dino_features/`](dino_features/README.md) | DINO/transformer per-voxel features inside the binary mask, light classification head | If pretrained representations are expected to outperform task-specific training given small dataset size |
 | [`human_in_the_loop/`](human_in_the_loop/README.md) | Slicer Segment Editor workflow for manual correction of edge cases | Always relevant — these notes describe how the binary mask + Stage-2 output can be loaded for review |
+
+## Quickstart for Approach A (current focus — chambers + bulk vessels)
+
+```bash
+# 1.  Build Dataset041 (CT + binary heart prior + 7-class labels).
+#     Default uses GT-binarised channel 1 — no Stage-1 dependency.
+python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py --dry-run
+python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py
+
+# 2.  Preprocess + train three trainers fold 0 + infer on imagesTs.
+sbatch scripts/CHD_Dataset041_mask_constrained.sh
+
+# 3.  Compare exp1 / exp2 / exp3 predictions.  Per-class Dice tells you
+#     whether topology loss earns its keep; AO/PA swap-rate stratified by
+#     TGA/DORV tells you whether FiLM disease conditioning helps.
+```
+
+Once Stage-1 binary masks exist for every imagesTr case, re-run with
+`--mask-source predicted --mask-dir-tr ... --mask-dir-ts ...` to retrain on
+the noisier mask distribution the model will see at inference time.
 
 ## Decision criteria (after Stage-1 eval)
 

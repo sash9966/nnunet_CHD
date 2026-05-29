@@ -1,33 +1,37 @@
 #!/bin/bash
 # =============================================================================
-#  CHD_Dataset030_ablation_combos.sh   (Job 3 of 3)
-#  Dataset030_imageCHD_HU — Disease-conditioning × topology / aux combinations
-#  Fold 0, 200 epochs
+#  CHD_Dataset041_mask_constrained.sh
+#  Dataset041_ImageCHD_HU_MaskCond — 2-channel 7-class (CT + binary heart prior)
+#                                    Stage-2 Approach A, fold 0, 200 epochs
 #
-#  Companion scripts:
-#    Job 1: CHD_Dataset030_ablation_topo.sh    (B1, B2, T1, T2, T3)
-#    Job 2: CHD_Dataset030_ablation_disease.sh (D1, D2, D3)
+#  Three trainers, ranked by ablation intent:
+#    Exp 1  DA5 baseline                          (3d_fullres)
+#    Exp 2  DA5 + scheduled TopologyLoss (AO+PA)  (3d_fullres)
+#    Exp 3  DA5 + FiLM disease conditioning + Topo (3d_fullres)
 #
-#  ─── Rows trained here ───────────────────────────────────────────────────
-#  ID    Trainer                                    Config         Inference
-#  ────  ─────────────────────────────────────────  ─────────────  ─────────────────────────
-#  C1    DA5FiLMTopo_200e                           3d_fullres     predict_disease_conditioned
-#  C2    DA5AuxDiagTopo_200e                        3d_fullres     nnUNetv2_predict
-#  C3    DA5CrossAttnTopo_200e                      3d_fullres     predict_disease_conditioned
-#  C4    DA5AuxDiagCrossAttn_200e                   3d_fullres     predict_disease_conditioned
-#  C5    DA5FiLMAuxDiag_200e                        3d_fullres     predict_disease_conditioned
+#  Reads:
+#    - Dataset041 must already exist (build it with
+#      experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py)
+#    - disease_map.json gets auto-built for FiLM Exp 3 (Phase 0b)
 #
-#  Total: 5 fullres trainings, 5 inferences (~75h, expect ~2 walltime cycles)
+#  Phases
+#    0    plan_and_preprocess (3d_fullres only — no cascade for now)
+#    0b   build disease_map.json
+#    1    train Exp 1 (DA5)                  → infer on imagesTs
+#    2    train Exp 2 (DA5 + TopoScheduled)  → infer on imagesTs
+#    3    train Exp 3 (DA5 + FiLM + Topo)    → infer on imagesTs  (disease-conditioned)
 #
-#  RESUME SUPPORT
-#    Same as sibling scripts: .done markers per step, nnU-Net auto-resumes
-#    interrupted training, preprocess + disease_map markers live in SHARED.
-#    Local checkpoint dir: ${nnUNet_results}/Dataset030_imageCHD_HU/.checkpoints/CHD_Dataset030_ablation_combos/
+#  RESUME
+#    Each phase writes a .done marker; resubmission skips completed phases.
+#    Preprocess + disease_map markers go in SHARED_CKPT_DIR.
+#    nnU-Net auto-resumes interrupted training from checkpoint_latest.pth.
 #
 #  Before first submission:
-#    mkdir -p /scratch/users/sastocke/nnunet_CHD/logs
+#    1.  python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py
+#        (default --mask-source gt — no Stage-1 dependency)
+#    2.  mkdir -p /scratch/users/sastocke/nnunet_CHD/logs
 # =============================================================================
-#SBATCH --job-name=D030-abl-combos
+#SBATCH --job-name=D041-maskcond
 #SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -37,8 +41,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
-#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-combos_%j.out
-#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D030-abl-combos_%j.err
+#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D041-maskcond_%j.out
+#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D041-maskcond_%j.err
 
 set -euo pipefail
 
@@ -60,38 +64,27 @@ export PYTHONUNBUFFERED=1
 # ─────────────────────────────────────────────
 # 2.  Configuration
 # ─────────────────────────────────────────────
-DATASET_ID=30
-DATASET_NAME="Dataset030_imageCHD_HU"
+DATASET_ID=41
+DATASET_NAME="Dataset041_ImageCHD_HU_MaskCond"
 PLANNER="nnUNetPlannerResEncM"
 PLANS="nnUNetResEncUNetMPlans"
 FULLRES="3d_fullres"
+
+TRAINER_BASE="nnUNetTrainerDA5_200epochs"
+TRAINER_TOPO="nnUNetTrainerDA5TopoScheduled_200epochs"
+TRAINER_FILM="nnUNetTrainerDA5FiLMTopo_200epochs"
+
 REPO="/scratch/users/sastocke/nnunet_CHD"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
-PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions_ablation"
-CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset030_ablation_combos"
+PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions_stage2"
+CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/CHD_Dataset041_mask_constrained"
 SHARED_CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/shared"
 START_TS=$(date +%s)
-
-# Parallel arrays: trainer + inference mode ("plain" = nnUNetv2_predict, "cond" = disease-conditioned)
-FULLRES_TRAINERS=(
-    "nnUNetTrainerDA5FiLMTopo_200epochs"          # C1
-    "nnUNetTrainerDA5AuxDiagTopo_200epochs"       # C2
-    "nnUNetTrainerDA5CrossAttnTopo_200epochs"     # C3
-    "nnUNetTrainerDA5AuxDiagCrossAttn_200epochs"  # C4
-    "nnUNetTrainerDA5FiLMAuxDiag_200epochs"       # C5
-)
-FULLRES_INFER_MODES=(
-    "cond"    # C1: FiLM + Topo
-    "plain"   # C2: AuxDiag + Topo (no inference conditioning)
-    "cond"    # C3: CrossAttn + Topo
-    "cond"    # C4: AuxDiag + CrossAttn (CrossAttn drives inference)
-    "cond"    # C5: FiLM + AuxDiag (FiLM drives inference)
-)
 
 # ─────────────────────────────────────────────
 # 3.  Checkpoint helpers
 # ─────────────────────────────────────────────
-mkdir -p "${CKPT_DIR}" "${SHARED_CKPT_DIR}"
+mkdir -p "${CKPT_DIR}" "${SHARED_CKPT_DIR}" "${PRED_BASE}"
 
 sk() { echo "$1" | sed 's/nnUNetTrainer//' | sed 's/_200epochs/200e/'; }
 mark_done() { touch "${CKPT_DIR}/${1}.done"; }
@@ -102,13 +95,10 @@ shared_is_done()   { [[ -f "${SHARED_CKPT_DIR}/${1}.done" ]]; }
 verify_preprocessing() {
     local cfg=$1
     local n_raw n_prep prep_dir
-    # || true: grep -c exits 1 on zero matches; under set -euo pipefail that kills the
-    # subshell and can trip set -e on the assignment in some bash builds.
-    n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000" || true)
+    n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000")
     prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*_${cfg}" 2>/dev/null | head -1)
     if [[ -z "${prep_dir}" ]]; then
-        echo "ERROR: No preprocessed directory found for ${cfg}."
-        echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
+        echo "ERROR: No preprocessed directory for ${cfg}."
         exit 1
     fi
     n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
@@ -125,21 +115,18 @@ verify_preprocessing() {
 print_banner() {
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║  CHD_Dataset030_ablation_combos.sh  — START  (Job 3 of 3)       ║"
+    echo "║  CHD_Dataset041_mask_constrained.sh  — START                    ║"
     echo "╠══════════════════════════════════════════════════════════════════╣"
     printf "║  %-66s ║\n" "Date/Time  : $(date '+%Y-%m-%d %H:%M:%S')"
     printf "║  %-66s ║\n" "SLURM Job  : ${SLURM_JOB_ID:-manual}  node=${SLURMD_NODENAME:-local}"
     printf "║  %-66s ║\n" "Dataset    : ${DATASET_NAME}  (ID=${DATASET_ID})"
-    printf "║  %-66s ║\n" "Fold       : 0  |  Epochs: 200"
+    printf "║  %-66s ║\n" "Plans      : ${PLANS}   Config: ${FULLRES}  Fold: 0  Epochs: 200"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "Trainings  : 5 fullres (C1, C2, C3, C4, C5)"
+    printf "║  %-66s ║\n" "Exp 1  DA5 baseline                  : ${TRAINER_BASE}"
+    printf "║  %-66s ║\n" "Exp 2  DA5 + scheduled TopoLoss      : ${TRAINER_TOPO}"
+    printf "║  %-66s ║\n" "Exp 3  DA5 + FiLM + TopoLoss         : ${TRAINER_FILM}"
     printf "║  %-66s ║\n" ""
-    printf "║  %-66s ║\n" "C1  DA5FiLMTopo_200e        (FiLM + Topo)"
-    printf "║  %-66s ║\n" "C2  DA5AuxDiagTopo_200e     (Aux + Topo)"
-    printf "║  %-66s ║\n" "C3  DA5CrossAttnTopo_200e   (CrossAttn + Topo)"
-    printf "║  %-66s ║\n" "C4  DA5AuxDiagCrossAttn_200e (embedding reuse)"
-    printf "║  %-66s ║\n" "C5  DA5FiLMAuxDiag_200e     (FiLM + Aux)"
-    printf "║  %-66s ║\n" ""
+    printf "║  %-66s ║\n" "Raw data   : ${IN_DIR}"
     printf "║  %-66s ║\n" "Inference  : ${PRED_BASE}"
     printf "║  %-66s ║\n" "Checkpoint : ${CKPT_DIR}"
     echo "╚══════════════════════════════════════════════════════════════════╝"
@@ -159,119 +146,119 @@ print_footer() {
     local ss=$(( elapsed % 60 ))
     echo ""
     echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║  CHD_Dataset030_ablation_combos.sh  — END  (Job 3 of 3)         ║"
+    echo "║  CHD_Dataset041_mask_constrained.sh  — END                      ║"
     echo "╠══════════════════════════════════════════════════════════════════╣"
     printf "║  %-66s ║\n" "Date/Time  : $(date '+%Y-%m-%d %H:%M:%S')"
     printf "║  %-66s ║\n" "Elapsed    : ${hh}h ${mm}m ${ss}s"
+    printf "║  %-66s ║\n" ""
+    printf "║  %-66s ║\n" "Inference outputs in ${PRED_BASE}/"
+    printf "║  %-66s ║\n" "  exp1_da5/             DA5 baseline preds"
+    printf "║  %-66s ║\n" "  exp2_da5_topo/        DA5 + scheduled topo preds"
+    printf "║  %-66s ║\n" "  exp3_da5_film_topo/   DA5 + FiLM + topo preds (disease-cond)"
     printf "║  %-66s ║\n" ""
     printf "║  %-66s ║\n" "If incomplete: resubmit this script — it resumes automatically"
     echo "╚══════════════════════════════════════════════════════════════════╝"
 }
 
 # ─────────────────────────────────────────────
-# 5.  Inference dispatcher
-# ─────────────────────────────────────────────
-infer_fullres() {
-    local TRAINER=$1
-    local MODE=$2
-    local OUT_NAME=$3
-    local OUT_DIR="${PRED_BASE}/${OUT_NAME}"
-    local MODEL_DIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
-    mkdir -p "${OUT_DIR}"
-    if [[ "${MODE}" == "cond" ]]; then
-        python -m nnunetv2.inference.predict_disease_conditioned \
-            -i "${IN_DIR}" \
-            -o "${OUT_DIR}" \
-            -m "${MODEL_DIR}" \
-            -f 0
-    else
-        nnUNetv2_predict \
-            -i "${IN_DIR}" -o "${OUT_DIR}" \
-            -d ${DATASET_ID} -c ${FULLRES} \
-            -f 0 \
-            -tr ${TRAINER} -p ${PLANS}
-    fi
-}
-
-# ─────────────────────────────────────────────
 # START
 # ─────────────────────────────────────────────
 print_banner
-mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Plan and preprocess (shared with sibling jobs)
+# Phase 0 — Plan and preprocess (fullres only)
 # ─────────────────────────────────────────────
-if shared_is_done "p0_preprocess_all3"; then
-    echo "[SKIP] Phase 0: preprocess already done (shared marker)"
-elif [[ -d "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}" ]]; then
-    echo "[SKIP] Phase 0: preprocessed directory found without marker — recording"
-    shared_mark_done "p0_preprocess_all3"
+if shared_is_done "p0_preprocess_${FULLRES}"; then
+    echo "[SKIP] Phase 0: preprocess (${FULLRES}) already done"
 else
     echo "================================================================"
-    echo "Phase 0: plan_and_preprocess — ${FULLRES} (and lowres/cascade for sibling jobs)"
+    echo "Phase 0: plan_and_preprocess — ${FULLRES}"
     echo "================================================================"
     nnUNetv2_plan_and_preprocess \
         -d ${DATASET_ID} \
         -pl ${PLANNER} \
-        -c ${FULLRES} 3d_lowres 3d_cascade_fullres \
+        -c ${FULLRES} \
         --verify_dataset_integrity
-    shared_mark_done "p0_preprocess_all3"
+    shared_mark_done "p0_preprocess_${FULLRES}"
 fi
 verify_preprocessing "${FULLRES}"
 
 # ─────────────────────────────────────────────
-# Phase 0b — Build disease_map.json (shared with sibling jobs)
+# Phase 0b — Build disease_map.json (needed by Exp 3 / FiLM)
 # ─────────────────────────────────────────────
-if shared_is_done "p0b_disease_map"; then
-    echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
+if shared_is_done "p0b_disease_map_d41"; then
+    echo "[SKIP] Phase 0b: disease_map.json already built"
 else
     echo "================================================================"
-    echo "Phase 0b: Build disease_map.json"
+    echo "Phase 0b: Build disease_map.json (case IDs share with Dataset030)"
     echo "================================================================"
     python "${REPO}/scripts/make_disease_map.py" \
         --dataset-id ${DATASET_ID} \
-        --csv-name imageCHD_dataset_info.xlsx
-    shared_mark_done "p0b_disease_map"
+        --csv-name imageCHD_dataset_info.xlsx || \
+    echo "[WARN] disease_map.json build failed — Exp 3 will fail at startup. Continuing."
+    shared_mark_done "p0b_disease_map_d41"
 fi
 
 # ─────────────────────────────────────────────
-# Phase 1 — Fullres trainings (C1, C2, C3, C4, C5)
+# Helper — train + infer one experiment
 # ─────────────────────────────────────────────
-echo "================================================================"
-echo "Phase 1: Fullres training — ${#FULLRES_TRAINERS[@]} trainers, fold 0"
-echo "================================================================"
-for TRAINER in "${FULLRES_TRAINERS[@]}"; do
-    KEY="p1_fullres_$(sk ${TRAINER})_fold0"
-    if is_done "${KEY}"; then
-        echo "[SKIP] ${KEY}"
+train_and_infer() {
+    local exp_label=$1     # short tag, used for .done keys + pred subdir
+    local trainer=$2       # full trainer class name
+    local pred_subdir=$3   # e.g. exp1_da5
+
+    local train_key="train_${exp_label}_$(sk ${trainer})_fold0"
+    local infer_key="infer_${exp_label}_$(sk ${trainer})_fold0"
+    local pred_dir="${PRED_BASE}/${pred_subdir}"
+
+    echo "================================================================"
+    echo "${exp_label}: train — ${trainer}  (fold 0)"
+    echo "================================================================"
+    if is_done "${train_key}"; then
+        echo "[SKIP] ${train_key}"
     else
-        echo "--- ${KEY} ---"
+        echo "--- ${train_key} ---"
         nnUNetv2_train ${DATASET_ID} ${FULLRES} 0 \
-            -tr ${TRAINER} -p ${PLANS} --npz
-        mark_done "${KEY}"
+            -tr ${trainer} -p ${PLANS} --npz
+        mark_done "${train_key}"
     fi
-done
+
+    echo "================================================================"
+    echo "${exp_label}: infer on imagesTs — ${trainer}"
+    echo "================================================================"
+    if is_done "${infer_key}"; then
+        echo "[SKIP] ${infer_key}"
+    else
+        echo "--- ${infer_key} ---"
+        mkdir -p "${pred_dir}"
+        nnUNetv2_predict \
+            -i "${IN_DIR}" -o "${pred_dir}" \
+            -d ${DATASET_ID} -c ${FULLRES} \
+            -f 0 \
+            -tr ${trainer} -p ${PLANS}
+        mark_done "${infer_key}"
+    fi
+}
 
 # ─────────────────────────────────────────────
-# Phase 1b — Inference on imagesTs
+# Phase 1 — Exp 1: DA5 baseline
 # ─────────────────────────────────────────────
-echo "================================================================"
-echo "Phase 1b: Inference — fullres trainers on imagesTs"
-echo "================================================================"
-for i in "${!FULLRES_TRAINERS[@]}"; do
-    TRAINER="${FULLRES_TRAINERS[$i]}"
-    MODE="${FULLRES_INFER_MODES[$i]}"
-    OUT_NAME="$(sk ${TRAINER})"
-    KEY="p1b_infer_${OUT_NAME}"
-    if is_done "${KEY}"; then
-        echo "[SKIP] ${KEY}"
-    else
-        echo "--- ${KEY}  (mode=${MODE}) ---"
-        infer_fullres "${TRAINER}" "${MODE}" "${OUT_NAME}"
-        mark_done "${KEY}"
-    fi
-done
+train_and_infer "p1_exp1" "${TRAINER_BASE}" "exp1_da5"
+
+# ─────────────────────────────────────────────
+# Phase 2 — Exp 2: DA5 + scheduled topology
+# ─────────────────────────────────────────────
+train_and_infer "p2_exp2" "${TRAINER_TOPO}" "exp2_da5_topo"
+
+# ─────────────────────────────────────────────
+# Phase 3 — Exp 3: DA5 + FiLM + topology  (disease-conditioned)
+#   NOTE: inference here uses the unconditioned `nnUNetv2_predict` entry point,
+#   which means FiLM gets a zero-vector disease condition by default.  To run
+#   inference with per-case disease conditioning use
+#     python nnunetv2/inference/predict_disease_conditioned.py
+#   after this script finishes; the trained checkpoint will be reused.
+# ─────────────────────────────────────────────
+train_and_infer "p3_exp3" "${TRAINER_FILM}" "exp3_da5_film_topo"
 
 # ─────────────────────────────────────────────
 # END

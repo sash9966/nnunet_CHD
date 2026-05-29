@@ -112,6 +112,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | Phase | Script | Dataset | Purpose | Epochs | Resume? |
 |---|---|---|---|---|---|
 | 1 | `CHD_Dataset040_wholeheart.sh` | Dataset040 (ID=40) | **Whole-heart Stage 1:** binary heart vs not-heart. Trains fullres + lowres + cascade DA5 and infers on imagesTs. See `docs/wholeheart_pipeline.md`. | 200 | Yes |
+| 1b | `CHD_Dataset041_mask_constrained.sh` | Dataset041 (ID=41) | **Stage-2 Approach A:** 2-channel mask-conditioned 7-class. Three trainers fold 0: DA5 baseline, DA5+TopoScheduled, DA5+FiLM+Topo. Predictions in `predictions_stage2/{exp1_da5,exp2_da5_topo,exp3_da5_film_topo}/`. | 200 | Yes |
 | 2 | `CHD_Dataset030_ablation_topo.sh` | Dataset030 (ID=30) | **Topology + cascade ablation:** baselines + topology hypothesis (B1, B2, T1, T2, T3) — 7 trainings, fold 0 | 200 | Yes |
 | 3 | `CHD_Dataset030_ablation_disease.sh` | Dataset030 (ID=30) | **Disease conditioning alone:** D1=FiLM, D2=AuxDiag, D3=CrossAttn — 3 trainings, fold 0 | 200 | Yes |
 | 4 | `CHD_Dataset030_ablation_combos.sh` | Dataset030 (ID=30) | **Combinations:** C1–C5 (FiLM/Aux/CrossAttn × Topo + embedding-reuse) — 5 trainings, fold 0 | 200 | Yes |
@@ -128,6 +129,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 - `scripts/make_presentation.py` — generates `docs/CHD_TopologyLoss_Presentation.pptx`
 - `scripts/test_curriculum_class_weights.py` — unit test for curriculum weights
 - `scripts/convert_imagechd_to_wholeheart.py` — builds `Dataset040_WH_ImageCHD_HU_Detail` (binary heart) from Dataset030; symlinks images, binarises labelsTr, writes dataset.json. Used by `CHD_Dataset040_wholeheart.sh`.
+- `experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py` — builds `Dataset041_ImageCHD_HU_MaskCond` (CT + binary heart prior as channel 1, 7-class labels from Dataset030). Default `--mask-source gt` binarises GT labels on the fly (no Stage-1 dependency); `--mask-source predicted` symlinks NIfTIs from `--mask-dir-tr` / `--mask-dir-ts`. channel 1 uses `nonorm` so the binary mask passes through unscaled. Used by `CHD_Dataset041_mask_constrained.sh`.
 - `scripts/evaluate_wholeheart.py` — per-case Dice / IoU / HD95 / MSD / connected-component / largest-component / hole / skeleton-branch metrics. Optional `--compare-to MULTICLASS_DIR` collapses Dataset030 predictions on the fly for side-by-side comparison.
 
 **make_disease_map.py usage:**
@@ -194,7 +196,8 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | Dataset013 | 13 | `Dataset013_Fanweidatacleaned` | Fanwei cleaned clinical data — standalone baseline | No | No FiLM/topology; DA5 + cascade only |
 | Dataset020 | 20 | `Dataset020FanweiDataandImageCHD_HU` | Fanwei + imageCHD combined | No | Clinical deployment model; superset of Dataset013 |
 | Dataset030 | 30 | `Dataset030_imageCHD_HU` | Kaggle imageCHD with HU values | Yes (same labels) | More vessel branches, less smooth |
-| Dataset040 | 40 | `Dataset040_WH_ImageCHD_HU_Detail` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py` |
+| Dataset040 | 40 | `Dataset040_WH_ImageCHD_HU_Detail` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py`. **Stage 2 spec:** `experiments/wholeheart_decomposition/STAGE2_SPEC.md` + `anatomy_priors.yaml` (anatomy clarification, soft topology priors, disease overrides for TGA/DORV/ToF/PuA/HLHS, AO-vs-PA feature menu, HITL capture format) |
+| Dataset041 | 41 | `Dataset041_ImageCHD_HU_MaskCond` | **2-channel mask-conditioned** Stage-2 dataset (channel 0 = CT, channel 1 = binary heart prior with `nonorm`; labels = Dataset030 7-class) | Yes | Stage-2 Approach A. Built by `experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py` (defaults to `--mask-source gt`; switch to `--mask-source predicted --mask-dir-{tr,ts}` once Stage-1 has produced binary masks for every case). |
 
 **Label scheme (all datasets use same names):**
 
@@ -230,6 +233,10 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | `docs/project_overview.html` | Interactive HTML dashboard |
 | `docs/FEATURES.md` | **This file** — authoritative feature reference |
 | `docs/CHD_TopologyLoss_Presentation.pptx` | Project presentation |
+| `experiments/wholeheart_decomposition/STAGE2_SPEC.md` | Canonical Stage-2 spec: anatomy (class 7 = pulmonary artery), soft priors, disease overrides, AO/PA feature menu, HITL flows |
+| `experiments/wholeheart_decomposition/anatomy_priors.yaml` | Machine-readable mirror of the priors — single source of truth for graph / rule / QC code |
+| `experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py` | Builds Dataset041 (2-channel CT + binary heart prior, 7-class labels). Stage-2 Approach A. |
+| `scripts/CHD_Dataset041_mask_constrained.sh` | SLURM driver: preprocess Dataset041, train DA5 / DA5+Topo / DA5+FiLM+Topo on fold 0, infer on imagesTs. |
 
 **Topology loss note:** `topo_weight_schedule()` uses absolute epoch numbers.
 For 200-epoch runs the defaults (warmup=10, decay_start=40) give: ramp 0→10, plateau 10→40, decay 40→200.

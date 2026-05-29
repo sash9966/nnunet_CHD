@@ -229,6 +229,8 @@
   <a href="#cascade">Cascade Ablation</a>
   <a href="#ablation">Fold-0 Ablation</a>
   <a href="#wholeheart">Whole-Heart Pipeline</a>
+  <a href="#stage2">Stage 2 (in progress)</a>
+  <a href="#review">Review Findings</a>
   <a href="#topology">Topology Loss</a>
   <a href="#film">FiLM</a>
   <a href="#assumptions">Assumptions</a>
@@ -258,10 +260,22 @@
     <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
-    <div class="dash-card"><div class="num">7</div><div class="label">SLURM Scripts</div></div>
-    <div class="dash-card"><div class="num">5</div><div class="label">Datasets</div></div>
+    <div class="dash-card"><div class="num">8</div><div class="label">SLURM Scripts</div></div>
+    <div class="dash-card"><div class="num">6</div><div class="label">Datasets</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
+  </div>
+
+  <!-- ── Current focus call-out ── -->
+  <div class="card" style="border-left:3px solid var(--accent); margin-top:4px;">
+    <div class="card-head"><span class="dot dot-purple"></span><h3>Current focus — Stage 2 Approach A (Dataset041)</h3></div>
+    <p>Stage 1 produced binary whole-heart masks (Dataset040). The next step is to assign the 7 anatomical classes inside that mask. <strong>Approach A is the default first move:</strong> a 2-channel nnU-Net (CT + binary heart prior) trained as three variants on fold 0 to disentangle <em>topology loss</em> from <em>disease conditioning</em>.</p>
+    <p style="margin-top:6px;">
+      Anatomy + soft priors + AO-vs-PA feature menu: <code>experiments/wholeheart_decomposition/STAGE2_SPEC.md</code> + <code>anatomy_priors.yaml</code>.
+      Conversion: <code>experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</code>.
+      Run: <code>sbatch scripts/CHD_Dataset041_mask_constrained.sh</code>.
+    </p>
+    <p style="margin-top:6px;color:var(--muted);">After Stage-2A: the plan is to sandwich SeqSeg (centerline tracing) with a disease-conditioned graph model (branch labelling). See the Stage-2 section and Review Findings for the full status.</p>
   </div>
 </section>
 
@@ -611,6 +625,7 @@ python scripts/convert_imagechd_to_wholeheart.py              # binarise labelsT
 
   <br>
   <h3 style="margin-bottom:12px;">Stage 2 — decompose the binary mask (scaffolded only)</h3>
+  <p style="margin-bottom:6px;"><strong>Canonical Stage-2 spec:</strong> <code>experiments/wholeheart_decomposition/STAGE2_SPEC.md</code> + <code>anatomy_priors.yaml</code> — anatomy clarification (class 7 = <em>pulmonary artery</em>, not pulmonary veins), soft topology priors (AO↔LV, PA↔RV) with disease-conditioned overrides for TGA / DORV / ToF / PuA / HLHS, the AO-vs-PA discriminative feature menu, and the HITL correction-capture format. Priors are signals — <em>no silent relabeling</em>.</p>
   <p style="margin-bottom:6px;">Seven candidate approaches, all scaffolded with READMEs under <code>experiments/wholeheart_decomposition/</code>. Pick one after Stage-1 evaluation:</p>
   <div class="table-wrap">
     <table>
@@ -627,6 +642,121 @@ python scripts/convert_imagechd_to_wholeheart.py              # binarise labelsT
         <tr><td><code>human_in_the_loop/</code></td><td>Slicer Segment Editor manual correction workflow</td><td>Always relevant for clinical CFD preprocessing</td></tr>
       </tbody>
     </table>
+  </div>
+</section>
+
+<!-- ── STAGE 2 STATUS ── -->
+<section id="stage2">
+  <div class="section-title"><span>03d</span> Stage 2 — Approach A (Dataset041) — in progress</div>
+  <p style="margin-bottom:6px;">Stage 2 takes the binary heart mask from Stage 1 and assigns the seven anatomical classes inside it. Approach A is the mask-constrained nnU-Net: a 2-channel input (CT + binary heart prior) and the standard 7-class output head. Three trainers fold 0 disentangle the orthogonal hypotheses (DA5 alone, +topology, +disease).</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Build Dataset041</h3>
+  <pre>python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py --dry-run
+python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</pre>
+  <p style="margin-bottom:6px;color:var(--muted);">Default <code>--mask-source gt</code> binarises Dataset030 labels for channel 1 — works <em>right now</em>, no Stage-1 dependency. Once Stage-1 has predicted binary masks for every <code>imagesTr</code> case, re-run with <code>--mask-source predicted --mask-dir-tr ... --mask-dir-ts ...</code> at a fresh dataset ID so the two regimes can be compared.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Train + infer the three Stage-2A variants</h3>
+  <pre>sbatch scripts/CHD_Dataset041_mask_constrained.sh</pre>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Exp</th><th>Trainer</th><th>Hypothesis</th><th>Output dir</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">E1</span></td><td>DA5_200e</td><td>Baseline — does the prior alone fix chambers?</td><td><code>predictions_stage2/exp1_da5/</code></td></tr>
+        <tr><td><span class="badge badge-blue">E2</span></td><td>DA5TopoScheduled_200e</td><td>Does soft-clDice on AO/PA earn its keep on top of the prior?</td><td><code>predictions_stage2/exp2_da5_topo/</code></td></tr>
+        <tr><td><span class="badge badge-purple">E3</span></td><td>DA5FiLMTopo_200e</td><td>Does disease conditioning recover the right AO↔ventricle in TGA / DORV?</td><td><code>predictions_stage2/exp3_da5_film_topo/</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:8px;color:var(--muted);">Exp 3 inference inside the SLURM script gives a zero-vector disease condition (CFG-style "FiLM trained but unconditioned at test"). Run <code>predict_disease_conditioned.py</code> afterwards to get the per-case conditioned predictions.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">What's coming after Stage-2A</h3>
+  <ul style="margin-left:16px;color:var(--muted);margin-bottom:12px;">
+    <li><strong>SeqSeg ↔ graph-model sandwich:</strong> use Approach A output to seed SeqSeg centerline tracing for AO/PA, then a small disease-conditioned graph classifier labels each traced branch using <code>anatomy_priors.yaml</code> features. The graph net only <em>labels</em> branches, not traces — tractable on 73 cases.</li>
+    <li><strong>HITL via Slicer:</strong> bundle per-case CT + binary mask + 7-class pred + uncertainty + AO/PA disagreement into a <code>.mrml</code> scene. Spec in <code>STAGE2_SPEC.md</code> §5; arterial-outflow priority queue lives in the same capture format used for active-learning fine-tuning later.</li>
+    <li><strong>Rule-based feature backbone:</strong> chamber detection + geodesic distance + adjacency become <em>features</em> for both the graph net and the QC layer, not standalone labellers.</li>
+  </ul>
+</section>
+
+<!-- ── REVIEW FINDINGS ── -->
+<section id="review">
+  <div class="section-title"><span>03e</span> Review Findings — 2026-05-27 audit (post-fix)</div>
+  <p style="margin-bottom:12px;">Audit of mixins, losses, cascade plumbing, two-stage pipeline, and the new Dataset041 scaffolding. <strong>5 of 8 items resolved in-line</strong>; the remaining 3 are either explicitly documented latent bugs (need bigger plumbing fixes) or design choices flagged for the next training cycle.</p>
+
+  <div class="card-grid">
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ 1. Disease LR fix-up — now id-matches like AuxDiag <span class="badge badge-green">FIXED</span></h3></div>
+      <p>Was: <code>DiseaseConditioningMixin.mixin_fix_lr_after_scheduler</code> wrote <code>param_groups[1]["lr"]</code> by hardcoded index. Now: builds a set of disease param ids and walks <code>optimizer.param_groups</code> matching by id-set equality, same pattern AuxDiag uses. Safe under any MRO order; safe if more mixins are added later.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/disease_conditioning.py:255</code></p>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="dot dot-yellow"></span><h3>2. Predictor's static-call disease_K still hardcoded to 8 <span class="badge badge-yellow">DOCUMENTED</span></h3></div>
+      <p>The actual fix needs <code>inference_config.json</code> plumbed into <code>nnUNetPredictor.manual_initialization</code> — bigger than a low-hanging fix. Added a loud <code>LATENT-BUG NOTE</code> comment at the hardcode so future maintainers see the assumption immediately. <strong>Action item</strong>: when training a model with <code>disease_K ≠ 8</code>, this needs to be properly fixed before inference will work.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/disease_conditioning.py:72</code></p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ 3. TopoScheduled 200-epoch plateau — extended to 120 <span class="badge badge-green">FIXED</span></h3></div>
+      <p>All three 200-epoch TopoScheduled subclasses (<code>DA5TopoScheduled_200epochs</code>, <code>DA5CascadeTopoScheduled_200epochs</code>, <code>DA5CascadeFullresTopoScheduled_200epochs</code>) now override <code>topo_decay_start = 120</code>. Plateau extends from 30 epochs to 110 epochs (epochs 10–120), then cosine-decays over the final 80 epochs. The topology signal now actually bites during the meaty middle of training. <strong>Directly relevant to Stage-2A Exp 2.</strong></p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/composed/nnUNetTrainerDA5TopoScheduled.py</code></p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ 4. <code>_load_disease_map</code> — tracks all unique padded lengths <span class="badge badge-green">FIXED</span></h3></div>
+      <p>Replaced single <code>original_len</code> variable with <code>padded_from_lengths: set</code>. Log line now reports the sorted set of all source lengths that were padded, so heterogeneous-length disease maps surface correctly instead of reporting whichever shorter case happened to be last in the iteration.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/disease_conditioning.py:179</code></p>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="dot dot-yellow"></span><h3>5. <code>ComposableTrainerMixin</code> forces SGD + PolyLR when extra groups exist</h3></div>
+      <p><code>configure_optimizers</code> hardcodes <code>SGD(momentum=0.99, nesterov=True)</code> and <code>PolyLRScheduler</code> when any mixin contributes an extra param group. If a future trainer (e.g. an AdamW-based variant) lands in the MRO, it'll silently revert to SGD without a warning. Either read these from the base trainer or assert that the user is wiring what they intended.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/_base.py:249</code></p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ 6. Grad-clip max norm — now a class attribute <span class="badge badge-green">FIXED</span></h3></div>
+      <p>Both <code>clip_grad_norm_(..., 12)</code> call sites in <code>ComposableTrainerMixin.train_step</code> now use <code>self.gradient_clip_max_norm</code>, defaulting to 12 (upstream nnUNetTrainer value preserved). Mixins or subclasses can now tune the clip without monkey-patching the training loop.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/_base.py:115</code></p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ 7. <code>mixin_modify_target</code> — asymmetry now documented <span class="badge badge-green">FIXED</span></h3></div>
+      <p>Added a NOTE to the docstring explicitly stating that the hook fires only in <code>train_step</code> and that validation is intentionally evaluated against unmodified targets so val Dice tracks the true labelling. The asymmetry is by design; future readers no longer need to deduce that from running both methods through the debugger.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>nnunetv2/training/nnUNetTrainer/variants/mixins/_base.py:60</code></p>
+    </div>
+
+    <div class="card concern">
+      <div class="card-head"><span class="dot dot-yellow"></span><h3>8. Dataset041 GT-mode requires <code>labelsTs</code> for every test case</h3></div>
+      <p>My conversion script's GT-binarise path errors out if any <code>imagesTs</code> case lacks a label, even when <code>labelsTs</code> isn't being copied. Fine for Dataset030 (every test case has a label) but breaks for unlabelled clinical test sets — those need <code>--mask-source predicted</code>. Document the limitation; consider letting the script fall back to "skip channel 1 for unlabelled test cases" with a warning instead of a hard exit.</p>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;"><code>experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</code></p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ Cascade plumbing — clean</h3></div>
+      <p><code>generate_cascade_preds.py</code> and <code>setup_cascade_predictions.py</code> handle the cross-trainer-class case correctly. The wholeheart same-class case gracefully no-ops (script detects the existing real directory and prints a WARN without breaking the run). <code>folder_with_segs_from_previous_stage</code> is set up by <code>nnUNetTrainer.__init__</code> via <code>configuration_manager.previous_stage_name</code>. No bugs surfaced.</p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ FiLM bottleneck-only architecture — clean</h3></div>
+      <p>The (1+γ) compounding instability noted in memory is fixed: only the bottleneck is modulated, decoder FiLMs were removed. Small-Gaussian init on γ-head and β-head (std=0.01) gives near-identity at start but allows immediate gradient flow — better than zero-init which would block gradients to <code>disease_mlp</code>. Magnitude diagnostics surface via <code>get_film_magnitudes()</code> and the logger.</p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ AuxDiag silent-failure detection — exemplary</h3></div>
+      <p><code>AuxiliaryDiagnosisMixin</code> tracks per-epoch <code>steps_total</code> vs <code>steps_contributing</code> with per-reason skip counters. If the aux loss silently dies (the historical <code>_image</code>-suffix bug), it surfaces a loud WARNING per epoch and an ERROR if the hook never fired. Other mixins should adopt this telemetry pattern — especially topology and FiLM, where silent zero-loss runs would be easy to miss.</p>
+    </div>
+
+    <div class="card ok">
+      <div class="card-head"><span class="dot dot-green"></span><h3>✓ Stage-2 spec + anatomy priors — internally consistent</h3></div>
+      <p><code>STAGE2_SPEC.md</code>'s disease-condition table matches <code>anatomy_priors.yaml</code> entry-for-entry; both use the K=8 flag names from <code>disease_map.json</code>. The no-silent-relabel rule is encoded in <code>use_policy.silent_relabel_allowed = false</code> so downstream code can opt-in to enforcement.</p>
+    </div>
+
   </div>
 </section>
 
@@ -913,6 +1043,67 @@ $nnUNet_results/.../disease_map.json
     </div>
 
   </div>
+
+  <!-- ── Approaches you may have missed ── -->
+  <div class="section-title" style="margin-top:32px;"><span></span> Approaches not yet on the roadmap</div>
+  <p style="margin-bottom:16px;color:var(--muted);">Brainstormed during the 2026-05-27 audit. Ranked by ROI for the chamber + AO/PA labelling problem under the current 73-case constraint. Pick from these only after Stage-2A results are in.</p>
+  <div class="card-grid">
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-accent">High ROI</span><h3>Branch-level GNN sandwiched between nnU-Net and SeqSeg</h3></div>
+      <p>The headline idea from the user's Stage-2 plan. Approach A gives chamber labels; SeqSeg traces vessel centerlines; a small disease-conditioned GNN labels each traced branch using node features from <code>anatomy_priors.yaml</code>. The GNN's job is <em>labelling</em>, not tracing — tractable on 73 cases. Most likely path to actually beat SeqSeg on AO/PA semantic assignment, especially in TGA/DORV.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~2 weeks. Depends on: Approach A predictions + a SeqSeg-style centerline tracer.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-accent">High ROI</span><h3>Cross-model disagreement as an active-learning signal</h3></div>
+      <p>Run E1 / E2 / E3 on every unlabelled clinical case (Fanwei has CTs without labels). Where the three models disagree on AO vs PA, queue the case for clinician review in Slicer using the HITL capture format already specified in <code>STAGE2_SPEC.md</code> §5. Cheap, immediately useful as a clinical-triage tool, and produces gold-standard corrections that can fine-tune a future Stage-2 model. Doesn't need any new modelling work.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~1 week of plumbing. Depends on: Stage-2A predictions done.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-blue">Medium ROI</span><h3>Boundary / Hausdorff-aware loss on AO and PA</h3></div>
+      <p>Soft-clDice rewards centerline continuity but is silent on boundary precision. A boundary-distance-based loss (e.g. <code>BoundaryLoss</code> from Kervadec et al. or a soft Hausdorff term) directly penalises mis-bordering of the two great arteries — exactly the failure mode that makes AO/PA look local-patch-identical. Composes with the existing topology mixin; doesn't need a new architecture.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~3 days. Risk: extra hyperparameter to tune.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-blue">Medium ROI</span><h3>Anatomical landmark detection as a side-task</h3></div>
+      <p>Predict 3D coordinates of aortic root, pulmonary valve, mitral valve, and apex as a regression head off the bottleneck — same place AuxDiag lives. Landmarks are useful (a) as features for the graph model, (b) as anchors for downstream CFD preprocessing, (c) as a regulariser forcing the encoder to learn anatomically meaningful features. Three landmarks per case is plenty of supervision signal for an MLP head.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~1 week + landmark annotation. Annotation can be semi-automatic from existing GT masks.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-blue">Medium ROI</span><h3>Pretrained encoder from TotalSegmentator / nnFormer</h3></div>
+      <p>73 labelled CHD cases is the binding constraint. A frozen or LoRA-tuned encoder pretrained on TotalSegmentator (~1200 CT scans, 100+ structures) brings priors that 73 cases can't learn. Plug the encoder into the existing decoder via the same wrapper pattern used for FiLM. <code>dino_features/</code> is the scaffold for this; it just hasn't been implemented yet.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~1 week to wire up. Tradeoff: gives up the ResEncUNetM advantage on this specific dataset.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-yellow">Lower ROI</span><h3>Three-stage cascade (binary → lowres 7-class → fullres 7-class)</h3></div>
+      <p>Extend the current 2-stage idea: Stage-1 binary heart → Stage-2a lowres 7-class (uses the binary mask as channel 1) → Stage-2b cascade-fullres refinement of Stage-2a. The cascade lowres stage operates at a larger effective FOV, which is where chamber-level semantic decisions should be made. Stage-2b only refines high-frequency boundaries. Would integrate into the existing <code>nnUNetTrainerDA5CascadeFullres*</code> family with no new mixins.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: extends the SLURM script. Compute: 3× the training time of Stage-2A.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-yellow">Lower ROI</span><h3>Probabilistic / multi-hypothesis output head</h3></div>
+      <p>For ambiguous cases (TGA, DORV), the right answer is a distribution over plausible labellings, not a single argmax. A low-rank probabilistic decoder (e.g. a discrete latent over K=2–4 hypotheses, weighted by disease flag) lets the clinician see the model's top-K guesses in Slicer and pick one. Less impressive on quantitative metrics but useful for the actual clinical workflow.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~2 weeks. Risk: hard to evaluate without a separate validation protocol.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-yellow">Lower ROI</span><h3>Self-distillation from an ensemble of E1/E2/E3</h3></div>
+      <p>Once the three Stage-2A variants are trained, distill them into a single student that matches their soft-target average. The student has the same architecture but training-time access to richer supervision, which often beats any single teacher at inference time. Costs: ~2× the student's normal training time, no new architecture. Could be the path to a single deployable Stage-2 model rather than three.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~3 days once E1/E2/E3 are done.</p>
+    </div>
+
+    <div class="card future">
+      <div class="card-head"><span class="badge badge-yellow">Lower ROI</span><h3>Test-time augmentation beyond mirroring</h3></div>
+      <p>nnU-Net's default TTA is left-right mirror flips. For CHD this is dangerous (situs inversus exists). Replace with smaller-but-anatomy-respecting TTA: ±5° rotations, small affine, no mirroring — for the patient subset where situs flag is unknown. Could also fold disease-conditioned predictions in: for each disease combination, run inference and use the most-confident prediction. Improves at inference cost without retraining.</p>
+      <p style="margin-top:6px;color:var(--muted);font-size:11px;">Effort: ~2 days. Risk: TTA gain may be small after a strong main model.</p>
+    </div>
+
+  </div>
 </section>
 
 <!-- ── ARCHITECTURE REFERENCE ── -->
@@ -1028,6 +1219,20 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
           <td><span class="badge badge-green">Yes</span></td>
           <td>More vessel branches than 001; same AO/PA label names</td>
         </tr>
+        <tr>
+          <td><span class="badge badge-orange">040</span></td>
+          <td class="mono">Dataset040_WH_ImageCHD_HU_Detail</td>
+          <td><strong>Stage 1</strong> — binary whole-heart derived from Dataset030</td>
+          <td><span class="badge badge-green">Yes</span> (stratified eval only)</td>
+          <td>Built by <code>scripts/convert_imagechd_to_wholeheart.py</code>. Trains fullres+lowres+cascade DA5 to produce a topology-clean heart mask.</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-accent">041</span></td>
+          <td class="mono">Dataset041_ImageCHD_HU_MaskCond</td>
+          <td><strong>Stage 2 / Approach A</strong> — 2-channel (CT + binary heart prior) → 7-class</td>
+          <td><span class="badge badge-green">Yes</span></td>
+          <td>Built by <code>experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</code>. Channel 1 uses <code>nonorm</code>. <code>--mask-source gt</code> default; <code>--mask-source predicted</code> once Stage-1 has run on every <code>imagesTr</code> case.</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -1093,7 +1298,7 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
   </details>
 
   <details open>
-    <summary><span class="badge badge-green">040</span> CHD_Dataset040_wholeheart.sh <span style="color:var(--muted);font-weight:400;">(Whole-Heart Stage 1)</span></summary>
+    <summary><span class="badge badge-orange">040</span> CHD_Dataset040_wholeheart.sh <span style="color:var(--muted);font-weight:400;">(Whole-Heart Stage 1)</span></summary>
     <div class="details-body">
       <div class="two-col" style="margin-bottom:12px;">
         <div><p><strong>Dataset:</strong> Dataset040_WH_ImageCHD_HU_Detail (ID=40)</p>
@@ -1111,6 +1316,28 @@ nnUNetv2_predict -i &lt;IN&gt; -o &lt;FINAL_OUT&gt; -d &lt;ID&gt; -c 3d_cascade_
       <pre>python scripts/convert_imagechd_to_wholeheart.py
 sbatch scripts/CHD_Dataset040_wholeheart.sh</pre>
       <p style="margin-top:8px;">Predictions in <code>$nnUNet_results/Dataset040_WH_ImageCHD_HU_Detail/predictions_wholeheart/{DA5_fullres,DA5_lowres,DA5_cascade}/</code>. Evaluate with <code>scripts/evaluate_wholeheart.py</code>. Full spec in <code>docs/wholeheart_pipeline.md</code>.</p>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="badge badge-accent">041</span> CHD_Dataset041_mask_constrained.sh <span style="color:var(--muted);font-weight:400;">(Stage 2 Approach A — new)</span></summary>
+    <div class="details-body">
+      <div class="two-col" style="margin-bottom:12px;">
+        <div><p><strong>Dataset:</strong> Dataset041_ImageCHD_HU_MaskCond (ID=41)</p>
+          <p><strong>SLURM job name:</strong> <code>D041-maskcond</code></p>
+          <p><strong>Wall time:</strong> 48h &nbsp;|&nbsp; <strong>Epochs:</strong> 200 &nbsp;|&nbsp; <strong>Fold:</strong> 0</p></div>
+        <div><p><strong>3 mask-conditioned trainings (3d_fullres only):</strong></p>
+          <ul style="margin-left:16px;color:var(--muted);">
+            <li><strong>E1</strong> DA5_200e — baseline (prior alone)</li>
+            <li><strong>E2</strong> DA5TopoScheduled_200e — + soft-clDice on AO/PA</li>
+            <li><strong>E3</strong> DA5FiLMTopo_200e — + disease conditioning</li>
+          </ul>
+          <p style="margin-top:6px;">Build Dataset041 first: <code>python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</code></p>
+        </div>
+      </div>
+      <pre>python experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py
+sbatch scripts/CHD_Dataset041_mask_constrained.sh</pre>
+      <p style="margin-top:8px;color:var(--muted);">Predictions in <code>$nnUNet_results/Dataset041_ImageCHD_HU_MaskCond/predictions_stage2/{exp1_da5,exp2_da5_topo,exp3_da5_film_topo}/</code>. E3 inference is unconditioned by default; run <code>predict_disease_conditioned.py</code> afterwards for per-case conditioned predictions.</p>
     </div>
   </details>
 

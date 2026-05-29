@@ -69,6 +69,14 @@ def build_disease_conditioned_network(
             self_or_arch_name, architecture_class_name, arch_init_kwargs,
             arch_init_kwargs_req_import, num_input_channels
         )
+        # LATENT-BUG NOTE: hardcoded disease dims. The static-call path (from
+        # nnUNetPredictor.manual_initialization) has no access to the trained
+        # model's inference_config.json, which is what the trainer writes at
+        # train start with the *actual* disease_K / H / E. Any future model
+        # with non-default disease dims (K != 8) will build a wrong-shape
+        # wrapper here and crash on state_dict load. Fix: plumb
+        # inference_config.json into the predictor and read these from it.
+        # Until then, the standard predictor only loads K=8 models.
         disease_K, disease_H, disease_E = 8, 64, 32
         trainer_instance = None
     else:
@@ -176,21 +184,21 @@ class DiseaseConditioningMixin(TrainerMixin):
         self.print_to_log_file(
             f"Loaded disease_map.json with {len(disease_map)} entries from {path}"
         )
-        padded = False
+        padded_from_lengths: set = set()
         for case_id, vec in disease_map.items():
             assert isinstance(vec, list) and len(vec) <= self.disease_K, (
                 f"disease_map entry for '{case_id}' has length {len(vec)}, "
                 f"exceeds disease_K={self.disease_K}"
             )
-            # Zero-pad shorter vectors (e.g. K=8 disease_map with K=32 model)
+            # Zero-pad shorter vectors (e.g. K=8 disease_map with K=32 model).
             if len(vec) < self.disease_K:
-                original_len = len(vec)
+                padded_from_lengths.add(len(vec))
                 disease_map[case_id] = vec + [0] * (self.disease_K - len(vec))
-                padded = True
 
-        if padded:
+        if padded_from_lengths:
             self.print_to_log_file(
-                f"disease_map.json vectors zero-padded from {original_len} to {self.disease_K}"
+                f"disease_map.json: zero-padded vectors from lengths "
+                f"{sorted(padded_from_lengths)} to {self.disease_K}"
             )
         return disease_map
 
@@ -254,10 +262,25 @@ class DiseaseConditioningMixin(TrainerMixin):
     # ------------------------------------------------------------------
     def mixin_fix_lr_after_scheduler(self):
         super().mixin_fix_lr_after_scheduler()
-        # PolyLRScheduler sets all param groups to the same LR.
-        # Re-apply the multiplier to group index 1 (the disease param group).
-        if len(self.optimizer.param_groups) > 1:
-            self.optimizer.param_groups[1]["lr"] *= self.disease_lr_multiplier
+        # PolyLRScheduler sets all param groups to the same LR; reapply the
+        # disease multiplier. Match by parameter id, NOT by hardcoded group
+        # index — when stacked with AuxDiag (which adds its own group) the
+        # disease group can land at index 1 or 2 depending on MRO order, and
+        # mutating the wrong group silently corrupts the aux head's LR.
+        prefixes = self.disease_param_prefixes
+        if not prefixes:
+            return
+        disease_ids = {
+            id(p) for name, p in self.network.named_parameters()
+            if any(name.startswith(prefix) or f'.{prefix}' in name for prefix in prefixes)
+        }
+        if not disease_ids:
+            return
+        main_lr = self.optimizer.param_groups[0]["lr"]
+        for group in self.optimizer.param_groups[1:]:
+            if {id(p) for p in group["params"]} == disease_ids:
+                group["lr"] = main_lr * self.disease_lr_multiplier
+                break
 
     # ------------------------------------------------------------------
     # Hook: on_train_start (copy disease_map.json + write inference_config)

@@ -61,6 +61,11 @@ class TrainerMixin:
         """Modify target labels before loss computation (training only).
 
         Must return the (possibly modified) target.  Default: passthrough.
+
+        NOTE: this hook fires only in ``train_step``, not ``validation_step``.
+        Validation is intentionally evaluated against the *unmodified* targets
+        so val Dice tracks the true labelling regardless of any train-time
+        target merging (e.g. disease-adaptive class collapsing).
         """
         return target
 
@@ -111,6 +116,11 @@ class ComposableTrainerMixin(TrainerMixin):
     Must appear in the MRO *after* all feature mixins and *before* the
     concrete base trainer (e.g. nnUNetTrainerDA5).
     """
+
+    # Gradient clipping max norm; mirrors nnUNetTrainer's hardcoded 12 but is
+    # exposed as a class attribute so mixins/subclasses can override (e.g. an
+    # aggressive topology run might want a tighter clip).
+    gradient_clip_max_norm: float = 12.0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -173,12 +183,12 @@ class ComposableTrainerMixin(TrainerMixin):
         if self.grad_scaler is not None:
             self.grad_scaler.scale(l).backward()
             self.grad_scaler.unscale_(self.optimizer)
-            torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.gradient_clip_max_norm)
             self.grad_scaler.step(self.optimizer)
             self.grad_scaler.update()
         else:
             l.backward()
-            torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.gradient_clip_max_norm)
             self.optimizer.step()
 
         return {"loss": l.detach().cpu().numpy()}

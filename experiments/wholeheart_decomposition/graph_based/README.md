@@ -1,5 +1,10 @@
 # Approach C — Graph / topology-based decomposition
 
+> Anatomy, soft topology priors, disease-conditioned overrides, and the full
+> AO-vs-PA feature menu live in [`../STAGE2_SPEC.md`](../STAGE2_SPEC.md) +
+> [`../anatomy_priors.yaml`](../anatomy_priors.yaml). Treat priors as **node
+> features and QC signals, never as silent relabel rules**.
+
 **Goal.** Decompose the binary heart mask into a graph (chambers + vessel
 branches) and assign anatomical labels at the *branch* level rather than
 the voxel level.

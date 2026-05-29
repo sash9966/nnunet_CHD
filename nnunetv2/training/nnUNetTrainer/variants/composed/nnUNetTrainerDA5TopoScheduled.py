@@ -56,6 +56,10 @@ class nnUNetTrainerDA5TopoScheduled_200epochs(nnUNetTrainerDA5TopoScheduled):
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 200
+        # Default decay_start=40 was tuned for 100-epoch runs and gives only a
+        # 30-epoch plateau here; push to 60% of training so the topology signal
+        # actually has time to bite before cosine decay kicks in.
+        self.topo_decay_start = 120
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +93,7 @@ class nnUNetTrainerDA5CascadeTopoScheduled_200epochs(nnUNetTrainerDA5CascadeTopo
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 200
+        self.topo_decay_start = 120  # see _200epochs sibling for rationale
 
 
 # ---------------------------------------------------------------------------
@@ -122,3 +127,4 @@ class nnUNetTrainerDA5CascadeFullresTopoScheduled_200epochs(nnUNetTrainerDA5Casc
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 200
+        self.topo_decay_start = 120  # see _200epochs sibling for rationale

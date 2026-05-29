@@ -1,5 +1,11 @@
 # Approach G — Human-in-the-loop via 3D Slicer Segment Editor
 
+> Arterial-outflow review priorities, QC overlays to ship to Slicer
+> (uncertainty, components, AO/PA disagreement), and the active-learning
+> capture format are specified in
+> [`../STAGE2_SPEC.md`](../STAGE2_SPEC.md) §5. The disease-flag overlays come
+> from [`../anatomy_priors.yaml`](../anatomy_priors.yaml).
+
 **Goal.** Make the Stage-1 + Stage-2 outputs trivially loadable into
 3D Slicer for clinician review and correction. Targets the actual
 end-user workflow (CFD preprocessing); makes the pipeline useful

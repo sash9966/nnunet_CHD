@@ -1,0 +1,193 @@
+# Stage-2 anatomy + topology priors
+# Single source of truth for Stage-2 code that needs anatomical groupings,
+# soft topology priors, or disease-conditioned overrides.
+#
+# Narrative spec: STAGE2_SPEC.md
+# Label IDs:      read from each dataset's dataset.json at runtime
+# Disease flags:  see docs/FEATURES.md §5 (K=8: HLHS, ASD, VSD, AVSD, DORV, PuA, ToF, TGA)
+#
+# IMPORTANT: priors are signals, not authority. Code consuming this file must
+# follow the "no silent relabel" rule (STAGE2_SPEC.md §2).
+
+schema_version: 1
+
+# ---------------------------------------------------------------------------
+# Anatomical groupings — semantic, not topological. Label IDs come from
+# dataset.json; this file only encodes meaning.
+# ---------------------------------------------------------------------------
+anatomical_classes:
+  ventricular_blood_pools:
+    - left_ventricle
+    - right_ventricle
+
+  atrial_blood_pools:
+    - left_atrium
+    - right_atrium
+
+  myocardium:
+    - myocardium
+
+  arterial_outflow:
+    - aorta
+    - pulmonary_artery   # class 7 = pulmonary artery / pulmonary outflow
+
+# ---------------------------------------------------------------------------
+# Default topology priors — what is usually true in a healthy heart.
+# prior_strength: soft  → use for features, QC, scoring; NEVER for relabeling.
+# ---------------------------------------------------------------------------
+default_topology_priors:
+  aorta:
+    usually_adjacent_to:
+      - left_ventricle
+      - myocardium
+    expected_behavior:
+      - systemic_outflow
+      - arch_like_course
+    prior_strength: soft
+
+  pulmonary_artery:
+    usually_adjacent_to:
+      - right_ventricle
+      - myocardium
+    expected_behavior:
+      - pulmonary_outflow
+      - bifurcation_pattern_if_visible
+    prior_strength: soft
+
+# ---------------------------------------------------------------------------
+# Disease-conditioned overrides — keyed by the K=8 flags in disease_map.json.
+# prior_strength: disease_conditioned → may override default priors when the
+# corresponding disease flag is set for a case.
+# ---------------------------------------------------------------------------
+disease_topology_priors:
+
+  TGA:                              # transposition of great arteries
+    description: >
+      Ventriculo-arterial discordance. Aorta arises from RV, pulmonary artery
+      from LV — the reverse of normal.
+    aorta:
+      may_connect_to:
+        - right_ventricle
+    pulmonary_artery:
+      may_connect_to:
+        - left_ventricle
+    prior_strength: disease_conditioned
+
+  DORV:                             # double outlet right ventricle
+    description: >
+      Both great arteries arise (entirely or predominantly) from the right
+      ventricle.
+    aorta:
+      may_connect_to:
+        - right_ventricle
+    pulmonary_artery:
+      may_connect_to:
+        - right_ventricle
+    prior_strength: disease_conditioned
+
+  ToF:                              # tetralogy of Fallot
+    description: >
+      RV outflow tract obstruction; PA often small / stenotic. AO usually
+      overrides the VSD and may appear partially over RV.
+    pulmonary_artery:
+      possible_features:
+        - small_caliber
+        - stenotic_outflow
+        - abnormal_rvot
+    aorta:
+      possible_features:
+        - overriding_aorta
+    prior_strength: disease_conditioned
+
+  PuA:                              # pulmonary atresia
+    description: >
+      Pulmonary outflow may be absent or replaced by collaterals. The PA
+      class may not present as a single connected component or may be
+      absent entirely from the segmentation.
+    pulmonary_artery:
+      possible_features:
+        - absent_or_atretic
+        - collateral_supply
+        - disconnected_components
+    prior_strength: disease_conditioned
+
+  HLHS:                             # hypoplastic left heart syndrome
+    description: >
+      LV severely hypoplastic; AO often hypoplastic with retrograde flow.
+      LV volume threshold must be relaxed in any rule-based chamber detection.
+    left_ventricle:
+      possible_features:
+        - hypoplastic_or_vestigial
+        - reduced_volume
+    aorta:
+      possible_features:
+        - hypoplastic
+    prior_strength: disease_conditioned
+
+  AVSD:
+    description: >
+      Atrioventricular septal defect — septal anatomy abnormal, but
+      ventriculo-arterial connections usually intact. Listed for
+      completeness; no AO/PA override.
+    prior_strength: disease_conditioned
+
+  VSD:
+    description: >
+      Ventricular septal defect. Usually no AO/PA override unless paired
+      with another lesion (e.g. ToF, TGA).
+    prior_strength: disease_conditioned
+
+  ASD:
+    description: >
+      Atrial septal defect. Usually no AO/PA override.
+    prior_strength: disease_conditioned
+
+# ---------------------------------------------------------------------------
+# QC / use-policy — restated in machine-readable form so consumers can opt in.
+# ---------------------------------------------------------------------------
+use_policy:
+  silent_relabel_allowed: false
+  on_prior_violation:
+    - log_conflict
+    - emit_qc_flag
+    - propose_correction
+    - require_explicit_apply
+  suggested_qc_outputs:
+    - qc_flags.json                 # per case, list of violated priors
+    - uncertainty.nii.gz            # softmax entropy or model disagreement
+    - disagreement_aopa.nii.gz      # voxels where rule/graph/nnU-Net disagree
+    - components_aorta.nii.gz       # each connected component labelled
+    - components_pa.nii.gz          # each connected component labelled
+
+# ---------------------------------------------------------------------------
+# AO-vs-PA discriminative feature menu — picked up by graph_based, rule_based,
+# and downstream classifiers. Not all approaches use all features.
+# ---------------------------------------------------------------------------
+ao_pa_discriminative_features:
+  local:
+    - nnunet_class_probabilities
+    - lowres_prior_probabilities
+    - hu_mean
+    - hu_std
+    - gradient_magnitude
+    - softmax_entropy
+  structural:
+    - contact_area_lv
+    - contact_area_rv
+    - contact_area_myocardium
+    - geodesic_distance_to_lv
+    - geodesic_distance_to_rv
+    - vessel_radius_profile
+    - vessel_length
+    - bifurcation_count
+    - centerline_curvature
+    - outflow_direction_vector
+  global:
+    - normalized_si_position        # superior–inferior
+    - normalized_ap_position        # anterior–posterior
+    - normalized_lr_position        # left–right
+    - disease_code_embedding        # K=8 one-hot or learned
+  cross_model:
+    - rule_vs_nnunet_agreement
+    - graph_vs_nnunet_agreement
+    - rule_vs_graph_agreement

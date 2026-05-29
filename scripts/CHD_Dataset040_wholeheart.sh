@@ -101,7 +101,9 @@ shared_is_done()   { [[ -f "${SHARED_CKPT_DIR}/${1}.done" ]]; }
 verify_preprocessing() {
     local cfg=$1
     local n_raw n_prep prep_dir
-    n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000")
+    # || true: grep -c exits 1 on zero matches; under set -euo pipefail that kills the
+    # subshell and can trip set -e on the assignment in some bash builds.
+    n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000" || true)
     prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*_${cfg}" 2>/dev/null | head -1)
     if [[ -z "${prep_dir}" ]]; then
         echo "ERROR: No preprocessed directory found for ${cfg}."
@@ -180,6 +182,10 @@ mkdir -p "${PRED_BASE}"
 # ─────────────────────────────────────────────
 if shared_is_done "p0_preprocess_all3"; then
     echo "[SKIP] Phase 0: preprocess already done (shared marker)"
+elif [[ -d "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}" ]] && \
+     [[ -d "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${LOWRES}" ]]; then
+    echo "[SKIP] Phase 0: preprocessed directories found without marker — recording"
+    shared_mark_done "p0_preprocess_all3"
 else
     echo "================================================================"
     echo "Phase 0: plan_and_preprocess — ${FULLRES} | ${LOWRES} | ${CASCADE}"
