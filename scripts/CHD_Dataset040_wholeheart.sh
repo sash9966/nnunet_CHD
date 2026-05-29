@@ -180,7 +180,14 @@ mkdir -p "${PRED_BASE}"
 # Phase 0 — Plan and preprocess
 # ─────────────────────────────────────────────
 _prep_check="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
-_n_prep_check=$(find "${_prep_check}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+# Guard the find: running it on a non-existent dir returns exit 1, which under
+# set -euo pipefail propagates through the command substitution and kills the
+# script SILENTLY (no error message). Only run find when the dir exists.
+if [[ -d "${_prep_check}" ]]; then
+    _n_prep_check=$(find "${_prep_check}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+else
+    _n_prep_check=0
+fi
 if [[ ${_n_prep_check} -gt 0 ]]; then
     echo "[SKIP] Phase 0: ${_n_prep_check} cases already in ${PLANS}_${FULLRES}"
     shared_mark_done "p0_preprocess_all3"
