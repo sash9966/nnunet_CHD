@@ -119,21 +119,21 @@ shared_is_done()   { [[ -f "${SHARED_CKPT_DIR}/${1}.done" ]]; }
 
 verify_preprocessing() {
     local cfg=$1
-    local n_raw n_prep prep_dir
-    # || true: grep -c exits 1 on zero matches; under set -euo pipefail that kills the
-    # subshell and can trip set -e on the assignment in some bash builds.
+    local n_raw n_prep
+    # Use the exact plans-specific directory (not a wildcard match that can pick up
+    # a different planner's folder, e.g. nnUNetPlans_3d_fullres instead of
+    # nnUNetResEncUNetMPlans_3d_fullres).
+    local prep_dir="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${cfg}"
     n_raw=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000" || true)
-    prep_dir=$(find "${nnUNet_preprocessed}/${DATASET_NAME}" -maxdepth 1 -type d -name "*_${cfg}" 2>/dev/null | head -1)
-    if [[ -z "${prep_dir}" ]]; then
-        echo "ERROR: No preprocessed directory found for ${cfg}."
-        echo "  Looked in: ${nnUNet_preprocessed}/${DATASET_NAME}/*_${cfg}"
+    if [[ ! -d "${prep_dir}" ]]; then
+        echo "ERROR: preprocessed dir not found: ${prep_dir}"
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
         exit 1
     fi
     n_prep=$(find "${prep_dir}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
-    echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${prep_dir}"
+    echo "[VERIFY] ${cfg}: ${n_prep}/${n_raw} cases in ${PLANS}_${cfg}"
     if [[ ${n_prep} -lt ${n_raw} ]]; then
-        echo "ERROR: Missing preprocessed files for ${cfg} (${n_prep}/${n_raw})."
+        echo "ERROR: only ${n_prep}/${n_raw} preprocessed files found for ${cfg}."
         echo "  Fix: nnUNetv2_preprocess -d ${DATASET_ID} -pl ${PLANNER} -c ${cfg}"
         exit 1
     fi
@@ -197,11 +197,13 @@ mkdir -p "${PRED_BASE}"
 # ─────────────────────────────────────────────
 # Phase 0 — Plan and preprocess (all three configs; shared with sibling jobs)
 # ─────────────────────────────────────────────
-if shared_is_done "p0_preprocess_all3"; then
-    echo "[SKIP] Phase 0: preprocess already done (shared marker)"
-elif [[ -d "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}" ]] && \
-     [[ -d "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${LOWRES}" ]]; then
-    echo "[SKIP] Phase 0: preprocessed directories found without marker — recording"
+# Check the plans-specific fullres directory for actual .b2nd files rather than
+# relying solely on the shared marker (which may have been written by a run that
+# used a different planner or an older preprocessing format without .b2nd files).
+_prep_check="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
+_n_prep_check=$(find "${_prep_check}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+if [[ ${_n_prep_check} -gt 0 ]]; then
+    echo "[SKIP] Phase 0: ${_n_prep_check} cases already in ${PLANS}_${FULLRES}"
     shared_mark_done "p0_preprocess_all3"
 else
     echo "================================================================"
