@@ -337,6 +337,46 @@ else
 fi
 
 # ─────────────────────────────────────────────
+# Phase 3.5 — Verify cascade prev-stage predictions before training
+# ─────────────────────────────────────────────
+# The 3d_cascade_fullres trainer reads previous-stage segmentations from
+#   <CASCADE_TRAINER>__<plans>__3d_lowres/predicted_next_stage/3d_cascade_fullres/
+# (this is nnUNetTrainer.folder_with_segs_from_previous_stage). It needs one
+# .b2nd per training case; a shortfall here is what makes Phase 4 fail. Verify
+# loudly with the resolved path so the cause is never a mystery.
+echo "================================================================"
+echo "Phase 3.5: Verify cascade prev-stage predictions"
+echo "================================================================"
+NEXT_STAGE_DIR="${nnUNet_results}/${DATASET_NAME}/${CASCADE_TRAINER}__${PLANS}__${LOWRES}/predicted_next_stage/${CASCADE}"
+LOWRES_PREP="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${LOWRES}"
+if [[ -d "${LOWRES_PREP}" ]]; then
+    _n_cases=$(find "${LOWRES_PREP}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+else
+    _n_cases=0
+fi
+if [[ -d "${NEXT_STAGE_DIR}" ]]; then
+    _n_preds=$(find "${NEXT_STAGE_DIR}" -maxdepth 1 -name "*.b2nd" 2>/dev/null | wc -l)
+else
+    _n_preds=0
+fi
+echo "[VERIFY] prev-stage preds: ${_n_preds}/${_n_cases} training cases"
+echo "         read path: ${NEXT_STAGE_DIR}"
+if [[ "${_n_cases}" -lt 1 ]]; then
+    echo "ERROR: no lowres preprocessed cases found in ${LOWRES_PREP}"
+    exit 1
+fi
+if [[ "${_n_preds}" -lt "${_n_cases}" ]]; then
+    echo "ERROR: only ${_n_preds}/${_n_cases} cascade prev-stage predictions present."
+    echo "  The 3d_cascade_fullres trainer needs one per training case. Phase 2.5"
+    echo "  (generate_cascade_preds.py) likely errored or was interrupted — scroll up"
+    echo "  for its traceback. To re-run it, clear the markers and resubmit:"
+    echo "    rm -f ${CKPT_DIR}/p2c_cascadepreds_$(sk ${TRAINER})_fold0.done"
+    echo "    rm -f ${CKPT_DIR}/p3_symlink_$(sk ${TRAINER})_to_$(sk ${CASCADE_TRAINER}).done"
+    exit 1
+fi
+echo "[VERIFY] OK — all ${_n_cases} prev-stage predictions present"
+
+# ─────────────────────────────────────────────
 # Phase 4 — Cascade fullres DA5 training
 # ─────────────────────────────────────────────
 echo "================================================================"

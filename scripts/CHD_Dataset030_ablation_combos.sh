@@ -199,47 +199,94 @@ print_banner
 mkdir -p "${PRED_BASE}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Plan and preprocess (shared with sibling jobs)
+# Phase 0 + 0b — Shared setup (preprocess + disease_map), cross-job serialised
 # ─────────────────────────────────────────────
-_prep_check="${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}"
-# Guard the find: running it on a non-existent dir returns exit 1, which under
-# set -euo pipefail propagates through the command substitution and kills the
-# script SILENTLY (no error message). Only run find when the dir exists.
-if [[ -d "${_prep_check}" ]]; then
-    _n_prep_check=$(find "${_prep_check}" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l)
+# The three D030 ablation jobs share ONE preprocessed directory and ONE
+# disease_map.json. Running them at the same time without coordination makes two
+# processes write the same .b2nd files concurrently -> blosc2 "Error while
+# setting the slice" corruption. We serialise shared setup with an atomic mkdir
+# lock (reliable across nodes on Lustre): the first job in runs preprocess +
+# disease map; the others block on its completion marker, then skip straight to
+# training. NOTE: a waiting job holds its GPU idle (~1-2h) while the winner
+# preprocesses — submit staggered if you'd rather not park two GPUs meanwhile.
+_n_raw_p0=$(ls "${nnUNet_raw}/${DATASET_NAME}/imagesTr/" | grep -c "_0000" || true)
+_lockdir="${SHARED_CKPT_DIR}/p0_setup.lockdir"
+
+_count_b2nd() {
+    if [[ -d "$1" ]]; then
+        find "$1" -maxdepth 1 -name "*_image.b2nd" 2>/dev/null | wc -l
+    else
+        echo 0
+    fi
+}
+# All preprocessed configs (fullres + lowres) must be fully present: the shared
+# marker means all configs are done, and the lock winner preprocesses all of them.
+_preprocess_complete() {
+    [[ "${_n_raw_p0}" -gt 0 ]] || return 1
+    [[ "$(_count_b2nd "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_${FULLRES}")" -ge "${_n_raw_p0}" ]] || return 1
+    [[ "$(_count_b2nd "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}_3d_lowres")" -ge "${_n_raw_p0}" ]] || return 1
+    return 0
+}
+do_preprocess() {
+    if shared_is_done "p0_preprocess_all3"; then
+        echo "[SKIP] Phase 0: preprocess marker present"
+    elif _preprocess_complete; then
+        echo "[SKIP] Phase 0: all ${_n_raw_p0} cases already preprocessed — recording marker"
+        shared_mark_done "p0_preprocess_all3"
+    else
+        echo "================================================================"
+        echo "Phase 0: plan_and_preprocess — ${FULLRES} (and lowres/cascade for sibling jobs)"
+        echo "================================================================"
+        nnUNetv2_plan_and_preprocess \
+            -d ${DATASET_ID} \
+            -pl ${PLANNER} \
+            -c ${FULLRES} 3d_lowres 3d_cascade_fullres \
+            --verify_dataset_integrity
+        shared_mark_done "p0_preprocess_all3"
+    fi
+}
+do_disease_map() {
+    if shared_is_done "p0b_disease_map"; then
+        echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
+    else
+        echo "================================================================"
+        echo "Phase 0b: Build disease_map.json"
+        echo "================================================================"
+        python "${REPO}/scripts/make_disease_map.py" \
+            --dataset-id ${DATASET_ID} \
+            --csv-name imageCHD_dataset_info.xlsx
+        shared_mark_done "p0b_disease_map"
+    fi
+}
+
+if shared_is_done "p0_setup_complete"; then
+    echo "[SKIP] Phase 0/0b: shared setup already complete (marker present)"
+elif mkdir "${_lockdir}" 2>/dev/null; then
+    echo "Phase 0/0b: acquired shared-setup lock (${_lockdir})"
+    trap 'rmdir "${_lockdir}" 2>/dev/null || true' EXIT
+    do_preprocess
+    do_disease_map
+    shared_mark_done "p0_setup_complete"
+    rmdir "${_lockdir}" 2>/dev/null || true
+    trap - EXIT
 else
-    _n_prep_check=0
-fi
-if [[ ${_n_prep_check} -gt 0 ]]; then
-    echo "[SKIP] Phase 0: ${_n_prep_check} cases already in ${PLANS}_${FULLRES}"
-    shared_mark_done "p0_preprocess_all3"
-else
-    echo "================================================================"
-    echo "Phase 0: plan_and_preprocess — ${FULLRES} (and lowres/cascade for sibling jobs)"
-    echo "================================================================"
-    nnUNetv2_plan_and_preprocess \
-        -d ${DATASET_ID} \
-        -pl ${PLANNER} \
-        -c ${FULLRES} 3d_lowres 3d_cascade_fullres \
-        --verify_dataset_integrity
-    shared_mark_done "p0_preprocess_all3"
+    echo "Phase 0/0b: another job holds the setup lock — waiting for it to finish..."
+    _waited=0
+    while ! shared_is_done "p0_setup_complete"; do
+        sleep 30
+        _waited=$((_waited + 30))
+        if (( _waited % 300 == 0 )); then
+            echo "  ... still waiting for sibling setup (${_waited}s elapsed)"
+        fi
+        if [[ ${_waited} -ge 10800 ]]; then
+            echo "ERROR: waited 3h for sibling shared-setup; aborting."
+            echo "  If no sibling is running, remove the stale lock: rmdir ${_lockdir}"
+            exit 1
+        fi
+    done
+    echo "Phase 0/0b: sibling completed shared setup after ${_waited}s — proceeding"
 fi
 verify_preprocessing "${FULLRES}"
-
-# ─────────────────────────────────────────────
-# Phase 0b — Build disease_map.json (shared with sibling jobs)
-# ─────────────────────────────────────────────
-if shared_is_done "p0b_disease_map"; then
-    echo "[SKIP] Phase 0b: disease_map.json already built (shared marker)"
-else
-    echo "================================================================"
-    echo "Phase 0b: Build disease_map.json"
-    echo "================================================================"
-    python "${REPO}/scripts/make_disease_map.py" \
-        --dataset-id ${DATASET_ID} \
-        --csv-name imageCHD_dataset_info.xlsx
-    shared_mark_done "p0b_disease_map"
-fi
 
 # ─────────────────────────────────────────────
 # Phase 1 — Fullres trainings (C1, C2, C3, C4, C5)
