@@ -18,7 +18,12 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `disease_conditioning.py` | `DiseaseConditioningMixin` | FiLM or Gated conditioning; requires `disease_map.json` |
 | `curriculum_weights.py` | `CurriculumWeightsMixin` | AO/PA CE class weights upweighted in early epochs |
 | `aux_diagnosis_mixin.py` | `AuxiliaryDiagnosisMixin` | Bottleneck MLP classification head (K=8); BCEWithLogitsLoss aux loss (weight 0.1); exposes 256-d `diagnosis_embedding`; 3× LR on head params |
-| `cross_attention_mixin.py` | `CrossAttentionConditioningMixin` | Single-head cross-attention at every decoder stage; (B,8,64) disease token sequence; attention entropy logged every 50 steps; **mutually exclusive** with `DiseaseConditioningMixin`; composes with `AuxiliaryDiagnosisMixin` (embedding-reuse path) |
+| `cross_attention_mixin.py` | `CrossAttentionConditioningMixin` | Single-head cross-attention at every decoder stage; (B,8,64) disease token sequence; attention entropy logged every 50 steps; **mutually exclusive** with `DiseaseConditioningMixin`; composes with `AuxiliaryDiagnosisMixin` (embedding-reuse path). **Each `CrossAttnBlock` is identity at init (zero-init `gamma` gate; LayerNorm on the conditioning branch only, not on x); attention scores in fp32 — fixes the earlier all-stage renormalisation that collapsed Dice to 0.0.** |
+| `region_scaffold.py` | `RegionScaffoldMixin` | Hierarchical region supervision (whole-heart/blood-pool/chambers/ventricles/atria/great-vessels/myocardium) on soft probs; stepwise λ 0.3→0.15→0.05; network unchanged |
+| `vessel_topo.py` | `VesselFocusedTopologyMixin` | Binary great-vessel (AO∪PA) soft-clDice as one connected structure; warmup 50→150, cap 0.15; network unchanged |
+| `centerline_aux.py` | `CenterlineAuxMixin` | Centerline-weighted CE on AO/PA (weight = 1+α·skeleton from GT, detached); on-the-fly soft skeleton; network unchanged |
+
+Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.py` (`SoftRegionScaffoldLoss`, `BinaryVesselClDiceLoss`, `CenterlineWeightedCELoss`, `resolve_chd_label_ids`, `build_region_groups`) — unit-tested by `nnunetv2/tests/test_anatomy_losses.py` without importing a trainer.
 
 **Hook chain order:** Feature mixins → `ComposableTrainerMixin` → base trainer (DA5 / nnUNetTrainer)
 
@@ -28,7 +33,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 
 ## 2. Composed Trainer Inventory (`nnunetv2/training/nnUNetTrainer/variants/composed/`)
 
-**Total classes: 84** (all include `_100epochs` and `_200epochs` variants at minimum)
+**Total classes: 93** (all include `_100epochs` and `_200epochs` variants at minimum)
 
 ### DA5 Baseline (no extras)
 - `nnUNetTrainerDA5_200epochs`, `_100epochs` — in `nnUNetTrainerDA5_epochs.py`
@@ -97,6 +102,13 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `nnUNetTrainerDA5AuxDiagTopo` + `_100e/_200e` | same |
 | `nnUNetTrainerDA5FiLMAuxDiag` + `_100e/_200e` | same |
 
+### Structural "beat-the-baseline" set (network unchanged → comparable to DA5 baseline)
+| Class | File | Idea |
+|---|---|---|
+| `nnUNetTrainerDA5RegionScaffold` + `_100e/_200e/_500e` | `nnUNetTrainerDA5RegionScaffold.py` | Hierarchical region-scaffold supervision (soft region Dice+BCE) |
+| `nnUNetTrainerDA5VesselFocusedTopo` + `_100e/_200e/_500e` | `nnUNetTrainerDA5VesselFocusedTopo.py` | Binary AO∪PA great-vessel clDice (continuity-focused) |
+| `nnUNetTrainerDA5CenterlineAux` + `_100e/_200e/_500e` | `nnUNetTrainerDA5CenterlineAux.py` | Centerline-weighted CE on the great vessels |
+
 ### Other
 - `nnUNetTrainerDA5Gated` + `_100e/_200e` — Spatially-gated disease conditioning (GatedConditionedResEncUNet)
 - `nnUNetTrainerDA5DiseaseVecTopo` + `_100e/_200e` — Disease vector (MLP concat) + topology
@@ -116,6 +128,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | 2 | `CHD_Dataset030_ablation_topo.sh` | Dataset030 (ID=30) | **Topology + cascade ablation:** baselines + topology hypothesis (B1, B2, T1, T2, T3) — 7 trainings, fold 0 | 200 | Yes |
 | 3 | `CHD_Dataset030_ablation_disease.sh` | Dataset030 (ID=30) | **Disease conditioning alone:** D1=FiLM, D2=AuxDiag, D3=CrossAttn — 3 trainings, fold 0 | 200 | Yes |
 | 4 | `CHD_Dataset030_ablation_combos.sh` | Dataset030 (ID=30) | **Combinations:** C1–C5 (FiLM/Aux/CrossAttn × Topo + embedding-reuse) — 5 trainings, fold 0 | 200 | Yes |
+| 5 | `CHD_Dataset030_newmethods_and_crossattn.sh` | Dataset030 (ID=30) | **Part A** — beat-the-baseline structural set: N1=RegionScaffold, N2=VesselFocusedTopo, N3=CenterlineAux (3 fullres trainings + inference, fold 0). **Part B** — re-infer existing CrossAttn / CrossAttnTopo checkpoints (conditioned + plain) to localise the 0.0 to inference vs training. | 200 | Yes |
 | C | `CHD_Dataset013_Fanwei.sh` | Dataset013 (ID=13) | Clinical baseline (no disease labels) | 200 | Yes |
 | C | `CHD_Dataset020_clinical.sh` | Dataset020 (ID=20) | Clinical deployment (Fanwei + imageCHD merged) | 200 | Yes |
 | — | `CHD_Dataset001_cascade_200epochs.sh` | Dataset001 (ID=1) | Historical D001 ablation — kept for reproducibility, not featured | 200 | Yes |
@@ -131,6 +144,8 @@ Read this file at the start of any conversation to reconstruct full project stat
 - `scripts/convert_imagechd_to_wholeheart.py` — builds `Dataset040_WH_ImageCHD_HU_Detail` (binary heart) from Dataset030; symlinks images, binarises labelsTr, writes dataset.json. Used by `CHD_Dataset040_wholeheart.sh`.
 - `experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py` — builds `Dataset041_ImageCHD_HU_MaskCond` (CT + binary heart prior as channel 1, 7-class labels from Dataset030). Default `--mask-source gt` binarises GT labels on the fly (no Stage-1 dependency); `--mask-source predicted` symlinks NIfTIs from `--mask-dir-tr` / `--mask-dir-ts`. channel 1 uses `nonorm` so the binary mask passes through unscaled. Used by `CHD_Dataset041_mask_constrained.sh`.
 - `scripts/evaluate_wholeheart.py` — per-case Dice / IoU / HD95 / MSD / connected-component / largest-component / hole / skeleton-branch metrics. Optional `--compare-to MULTICLASS_DIR` collapses Dataset030 predictions on the fly for side-by-side comparison.
+- `scripts/evaluate_topology_dataset030.py` — **topology-aware** multi-method comparison: per-class Dice + subclass_mean, clDice (AO/PA), connected-component count, largest-CC fraction, false-disconnected volume, centerline recall, AO↔PA / RA↔LA junction confusion, label-alternation, and a hard-case (ct_1063) report. Takes `--pred name=dir …` and writes `summary.csv` (ranked), `topology_table.csv`, `hard_cases.csv`, `per_case.json`. Use this to judge the new structural trainers vs DA5 — Dice alone hides their target failures.
+- `scripts/generate_centerline_targets_dataset030.py` — optional offline AO∪PA skeleton precompute (`skimage.skeletonize`) for inspection / future dataloader integration; `nnUNetTrainerDA5CenterlineAux` otherwise computes the skeleton on the fly from each patch.
 
 **make_disease_map.py usage:**
 ```bash
@@ -229,7 +244,7 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | `nnunetv2/architectures/gated_conditioned_unet.py` | `GatedConditionedResEncUNet` |
 | `nnunetv2/inference/predict_disease_conditioned.py` | Inference entry point for FiLM/Gated models |
 | `nnunetv2/training/nnUNetTrainer/variants/mixins/` | All mixin implementations |
-| `nnunetv2/training/nnUNetTrainer/variants/composed/` | All composed trainer classes (84 total) |
+| `nnunetv2/training/nnUNetTrainer/variants/composed/` | All composed trainer classes (93 total) |
 | `docs/project_overview.html` | Interactive HTML dashboard |
 | `docs/FEATURES.md` | **This file** — authoritative feature reference |
 | `docs/CHD_TopologyLoss_Presentation.pptx` | Project presentation |

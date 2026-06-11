@@ -256,7 +256,7 @@
   </p>
 
   <div class="dash-grid">
-    <div class="dash-card green"><div class="num">84</div><div class="label">Composed Trainers</div></div>
+    <div class="dash-card green"><div class="num">93</div><div class="label">Composed Trainers</div></div>
     <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
@@ -461,6 +461,38 @@
               <td>DA5 + clDice with schedule</td>
               <td><span class="badge badge-accent">New</span></td>
               <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <details open>
+    <summary><span class="dot dot-purple"></span> Structural "Beat-the-Baseline" Trainers (3d_fullres, network unchanged)</summary>
+    <div class="details-body">
+      <p>New trainers that attack the <em>structural</em> failure (global anatomy / vessel continuity) rather than adding local loss terms Dice can't see. All leave the network unchanged → standard <code>nnUNetv2_predict</code>, directly comparable to the DA5 baseline. Judge with <code>scripts/evaluate_topology_dataset030.py</code> (clDice, connected components, centerline recall) — not Dice alone.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Class name</th><th>Features</th><th>Status</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5RegionScaffold<br><small>_100/_200/_500epochs</small></td>
+              <td>Hierarchical region supervision (soft region Dice+BCE)</td>
+              <td><span class="badge badge-accent">New</span></td>
+              <td>λ 0.3→0.15→0.05; reduces class-competition flips</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5VesselFocusedTopo<br><small>_100/_200/_500epochs</small></td>
+              <td>Binary AO∪PA great-vessel clDice (continuity)</td>
+              <td><span class="badge badge-accent">New</span></td>
+              <td>Warmup 50→150, cap 0.15; vessel-tree as one structure</td>
+            </tr>
+            <tr>
+              <td class="mono">nnUNetTrainerDA5CenterlineAux<br><small>_100/_200/_500epochs</small></td>
+              <td>Centerline-weighted CE on great vessels</td>
+              <td><span class="badge badge-accent">New</span></td>
+              <td>weight = 1+α·skeleton(GT), on-the-fly; preserves thin branches</td>
             </tr>
           </tbody>
         </table>
