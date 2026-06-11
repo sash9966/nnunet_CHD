@@ -44,8 +44,16 @@ It absorbs ``encoder`` and ``decoder`` (identical state_dict keys) and adds:
       attn = softmax(Q @ K^T / √64)   ∈ (B, N, 8)
       out  = attn @ V                  ∈ (B, N, 64)
   out = out_proj(out)  →  (B, N, C_stage)
-  out = LayerNorm(x_flat + out)
+  out = x_flat + gamma * LayerNorm(out)   # gamma is a zero-init learned gate
   return reshape to (B, C_stage, *spatial)
+
+The LayerNorm is applied to the conditioning branch only (never to the decoder
+features x), and the additive update is gated by a zero-initialised ``gamma`` so
+each block is an EXACT identity at init.  Earlier the block renormalised x
+itself (``LayerNorm(x_flat + out)``) at every decoder stage, which compounded
+into a distribution shift that collapsed the segmentation head to all-background
+(0.0 Dice) — the same failure family as FiLM-at-N-stages (fixed there by going
+bottleneck-only).  Attention scores are computed in fp32 to avoid fp16 overflow.
 
 All cross-attention weights are xavier_uniform_ initialised; biases are zero.
 """
@@ -83,7 +91,16 @@ class CrossAttnBlock(nn.Module):
 
         self.q_proj   = nn.Linear(feat_channels, d_model)
         self.out_proj  = nn.Linear(d_model, feat_channels)
+        # LayerNorm is applied to the *conditioning branch only* (the additive
+        # update), NOT to the decoder features x — see forward().
         self.norm      = nn.LayerNorm(feat_channels)
+        # Zero-initialised residual gate: the block is an EXACT identity at the
+        # start of training (out = x).  Conditioning is learned gradually as
+        # gamma grows.  This prevents the compounding distribution shift that
+        # collapsed the seg head to all-background (0.0 Dice) when a
+        # renormalising LayerNorm was applied to x at every decoder stage — the
+        # same failure family as FiLM-at-N-stages (fixed there by bottleneck-only).
+        self.gamma = nn.Parameter(torch.zeros(1))
 
         # Xavier init for all projections, zero biases
         nn.init.xavier_uniform_(self.q_proj.weight)
@@ -118,21 +135,22 @@ class CrossAttnBlock(nn.Module):
         # Compute queries
         q = self.q_proj(x_flat)                         # (B, N, d_model)
 
-        # Single-head attention (K=8 tokens → attention matrix is tiny)
+        # Single-head attention (K=8 tokens → attention matrix is tiny).
+        # Compute scores in fp32 so the q@k^T matmul cannot overflow to inf
+        # under autocast/fp16 before the softmax.
         k = v = disease_tokens                           # (B, T, d_model)
-        attn = torch.softmax(
-            q @ k.transpose(-2, -1) * self.scale,       # (B, N, T)
-            dim=-1,
-        )
+        scores = (q.float() @ k.float().transpose(-2, -1)) * self.scale  # (B, N, T)
+        attn = torch.softmax(scores, dim=-1).to(v.dtype)
 
         # Store for entropy diagnostics (no extra memory cost — detached)
         self._last_attn = attn.detach()
 
         out = attn @ v                                   # (B, N, d_model)
         out = self.out_proj(out)                         # (B, N, C)
-
-        # Residual + LayerNorm
-        out = self.norm(x_flat + out)                    # (B, N, C)
+        # Normalise the conditioning signal, then add as a zero-gated residual.
+        # At init gamma == 0 → out == x_flat (identity), so the network starts
+        # exactly as the unconditioned baseline and learns conditioning slowly.
+        out = x_flat + self.gamma * self.norm(out)       # (B, N, C)
 
         return out.reshape(B, C, *spatial)
 
