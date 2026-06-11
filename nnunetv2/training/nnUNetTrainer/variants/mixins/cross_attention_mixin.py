@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import json
 import math
+import warnings
 from os.path import isfile, join
 from typing import Dict, List, Optional, Union
 
@@ -276,6 +277,33 @@ class CrossAttentionConditionedResEncUNet(nn.Module):
 
     def clear_disease_vec(self) -> None:
         self._current_disease_vec = None
+
+    # ------------------------------------------------------------------
+    # Backward-compatible loading
+    # ------------------------------------------------------------------
+    def load_state_dict(self, state_dict, *args, **kwargs):
+        """Backfill params added after older checkpoints were saved.
+
+        The zero-init ``gamma`` residual gate on each ``CrossAttnBlock`` did not
+        exist in pre-fix checkpoints.  The nnUNetPredictor loads weights with the
+        default ``strict=True`` (it does not use the trainer's lenient path), so
+        without this an old checkpoint raises "Missing key(s) ... gamma".  We
+        inject the missing ``gamma`` tensors as zeros (→ each block loads as an
+        identity, i.e. the unconditioned baseline path) and otherwise keep strict
+        loading intact for every real weight.
+        """
+        own = self.state_dict()
+        patched = dict(state_dict)
+        added = [k for k, v in own.items()
+                 if k.endswith(".gamma") and k not in patched]
+        for k in added:
+            patched[k] = torch.zeros_like(own[k])
+        if added:
+            warnings.warn(
+                f"CrossAttn: backfilled {len(added)} missing 'gamma' key(s) with "
+                f"zeros (pre-fix checkpoint; conditioning loads as identity)."
+            )
+        return super().load_state_dict(patched, *args, **kwargs)
 
     # ------------------------------------------------------------------
     # Deep-supervision property

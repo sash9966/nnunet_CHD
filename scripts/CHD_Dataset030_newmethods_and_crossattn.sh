@@ -144,7 +144,8 @@ for TRAINER in "${XATTN_TRAINERS[@]}"; do
         continue
     fi
 
-    # (b1) conditioned re-inference
+    # (b1) conditioned re-inference  — non-fatal: a diagnostic failure must NOT
+    # abort the Part A trainings below (so we don't gate the real work on it).
     OUT_COND="${PRED_BASE}/$(sk ${TRAINER})_cond_reinfer"
     KEY="b_cond_$(sk ${TRAINER})"
     if is_done "${KEY}"; then
@@ -152,12 +153,15 @@ for TRAINER in "${XATTN_TRAINERS[@]}"; do
     else
         echo "--- ${KEY}  ->  ${OUT_COND} ---"
         mkdir -p "${OUT_COND}"
-        python -m nnunetv2.inference.predict_disease_conditioned \
-            -i "${IN_DIR}" -o "${OUT_COND}" -m "${MODEL_DIR}" -f 0
-        mark_done "${KEY}"
+        if python -m nnunetv2.inference.predict_disease_conditioned \
+            -i "${IN_DIR}" -o "${OUT_COND}" -m "${MODEL_DIR}" -f 0; then
+            mark_done "${KEY}"
+        else
+            echo "[WARN] ${KEY} failed — continuing (will retry on resubmit)"
+        fi
     fi
 
-    # (b2) plain (unconditioned) re-inference
+    # (b2) plain (unconditioned) re-inference — also non-fatal
     OUT_PLAIN="${PRED_BASE}/$(sk ${TRAINER})_plain_reinfer"
     KEY="b_plain_$(sk ${TRAINER})"
     if is_done "${KEY}"; then
@@ -165,11 +169,14 @@ for TRAINER in "${XATTN_TRAINERS[@]}"; do
     else
         echo "--- ${KEY}  ->  ${OUT_PLAIN} ---"
         mkdir -p "${OUT_PLAIN}"
-        nnUNetv2_predict \
+        if nnUNetv2_predict \
             -i "${IN_DIR}" -o "${OUT_PLAIN}" \
             -d ${DATASET_ID} -c ${FULLRES} -f 0 \
-            -tr ${TRAINER} -p ${PLANS}
-        mark_done "${KEY}"
+            -tr ${TRAINER} -p ${PLANS}; then
+            mark_done "${KEY}"
+        else
+            echo "[WARN] ${KEY} failed — continuing (will retry on resubmit)"
+        fi
     fi
 done
 
