@@ -227,6 +227,7 @@
   <a href="#labels">Labels</a>
   <a href="#trainers">Trainers</a>
   <a href="#cascade">Cascade Ablation</a>
+  <a href="#results030">Results (D030)</a>
   <a href="#ablation">Fold-0 Ablation</a>
   <a href="#wholeheart">Whole-Heart Pipeline</a>
   <a href="#stage2">Stage 2 (in progress)</a>
@@ -256,7 +257,8 @@
   </p>
 
   <div class="dash-grid">
-    <div class="dash-card green"><div class="num">93</div><div class="label">Composed Trainers</div></div>
+    <div class="dash-card green"><div class="num">97</div><div class="label">Composed Trainers</div></div>
+    <div class="dash-card green"><div class="num">0.836</div><div class="label">Best subclass Dice (D030, n=32)</div></div>
     <div class="dash-card blue"><div class="num">6</div><div class="label">Mixin Features</div></div>
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
@@ -419,6 +421,7 @@
             <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMTopo<br><small>_100epochs</small></td><td>DA5 + FiLM + clDice (fixed w=0.2)</td><td><span class="badge badge-green">Working</span></td></tr>
             <tr><td class="mono">nnUNetTrainerDA5CascadeTopoScheduled<br><small>_100epochs</small></td><td>DA5 + clDice with schedule</td><td><span class="badge badge-accent">New</span></td></tr>
             <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMAdjacency</td><td>DA5 + FiLM + adjacency loss (placeholder)</td><td><span class="badge badge-red">Pending</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5DiseaseLandmark<br><small>_100/_200/_500epochs</small></td><td>Disease-proxy soft-Dice (positive-only) + AO∪PA clDice — for Dataset031 (chd_landmarks pkg)</td><td><span class="badge badge-accent">New</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -546,6 +549,129 @@
       </tbody>
     </table>
   </div>
+</section>
+
+<!-- ── DATASET030 ABLATION RESULTS (actual numbers) ── -->
+<section id="results030">
+  <div class="section-title"><span>03a</span> Results — Dataset030 Test Set (n = 32)</div>
+  <p style="margin-bottom:6px;">Per-case Dice on the 32-case held-out test set, fold 0. <code>subclass Dice</code> = mean over the
+  7 anatomical structures (LV-BP, RV-BP, LA, RA, Myo, Ao, PA), excluding whole-heart, then averaged over cases
+  (zeros for absent/failed structures are included, matching <code>dice_analysis.ipynb</code>). Δ is vs the
+  <strong>DA5 Baseline</strong> reference (0.832).</p>
+
+  <div class="callout" style="border-left:4px solid var(--green);padding:10px 14px;margin:14px 0;background:rgba(34,216,122,0.08);">
+    <strong>Headline:</strong> the working methods sit in a razor-thin band (0.822–0.836, ~1.4 Dice points).
+    Only the <strong>cascade / low-res</strong> variants (global context) edge above baseline; FiLM / AuxDiag /
+    topology-at-full-res are flat-to-slightly-negative. <strong>Myocardium (~0.71)</strong> and
+    <strong>PA (~0.77)</strong> are the weak structures, and <strong>ct_1063</strong> is the universal worst case.
+    Dice alone cannot separate these methods — which is exactly why the topology-aware eval + structural trainers exist.
+  </div>
+
+  <h3 style="margin-bottom:12px;">Ranked — DA5 family (mine)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>#</th><th>Method</th><th>subclass Dice ↑</th><th>Δ vs baseline</th>
+        <th>Ao</th><th>PA</th><th>Myo</th><th>Worst case</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        <tr style="background:rgba(34,216,122,0.07);">
+          <td>1</td><td class="mono"><strong>DA5 Cascade TopoSched</strong></td><td><strong>0.836</strong></td>
+          <td><span class="badge badge-green">+0.004</span></td><td>0.836</td><td>0.777</td><td>0.710</td>
+          <td>ct_1063 (0.318)</td><td><span class="badge badge-green">Best</span></td></tr>
+        <tr><td>2</td><td class="mono">DA5 200e lowres</td><td>0.833</td>
+          <td><span class="badge badge-green">+0.001</span></td><td>0.830</td><td>0.766</td><td>0.700</td>
+          <td>ct_1063 (0.340)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr style="background:rgba(124,106,247,0.07);">
+          <td>3</td><td class="mono"><strong>DA5 Baseline</strong></td><td><strong>0.832</strong></td>
+          <td><span class="badge">ref</span></td><td>0.837</td><td>0.774</td><td>0.718</td>
+          <td>ct_1063 (0.239)</td><td><span class="badge badge-accent">Reference</span></td></tr>
+        <tr><td>4</td><td class="mono">DA5 TopoSched</td><td>0.831</td>
+          <td><span class="badge badge-yellow">−0.001</span></td><td>0.835</td><td>0.772</td><td>0.716</td>
+          <td>ct_1063 (0.246)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>5</td><td class="mono">FiLM AuxDiag</td><td>0.830</td>
+          <td><span class="badge badge-yellow">−0.002</span></td><td>0.838</td><td>0.773</td><td>0.707</td>
+          <td>ct_1063 (0.191)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>6</td><td class="mono">AuxDiagTopo</td><td>0.830</td>
+          <td><span class="badge badge-yellow">−0.002</span></td><td>0.832</td><td>0.773</td><td>0.716</td>
+          <td>ct_1063 (0.211)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>7</td><td class="mono">DA5 200e</td><td>0.830</td>
+          <td><span class="badge badge-yellow">−0.002</span></td><td>0.832</td><td>0.773</td><td>0.718</td>
+          <td>ct_1063 (0.230)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>8</td><td class="mono">AuxDiag</td><td>0.829</td>
+          <td><span class="badge badge-yellow">−0.003</span></td><td>0.830</td><td>0.765</td><td>0.718</td>
+          <td>ct_1063 (0.214)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>9</td><td class="mono">DA5 FiLM V3</td><td>0.828</td>
+          <td><span class="badge badge-yellow">−0.004</span></td><td>0.833</td><td>0.769</td><td>0.717</td>
+          <td>ct_1063 (0.222)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>10</td><td class="mono">AuxDiag (ablation)</td><td>0.828</td>
+          <td><span class="badge badge-yellow">−0.004</span></td><td>0.833</td><td>0.771</td><td>0.717</td>
+          <td>ct_1063 (0.266)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr><td>11</td><td class="mono">AuxDiagCrossAttn (CrossAttn abl.)</td><td>0.822</td>
+          <td><span class="badge badge-yellow">−0.010</span></td><td>0.830</td><td>0.759</td><td>0.716</td>
+          <td>ct_1063 (0.222)</td><td><span class="badge badge-green">Working</span></td></tr>
+        <tr style="background:rgba(245,101,101,0.07);"><td>12</td><td class="mono">CrossAttn</td><td>0.001</td>
+          <td><span class="badge badge-red">−0.831</span></td><td>0.000</td><td>0.000</td><td>0.006</td>
+          <td>ct_1003 (0.000)</td><td><span class="badge badge-red">Broken (inference)</span></td></tr>
+        <tr style="background:rgba(245,101,101,0.07);"><td>13</td><td class="mono">CrossAttnTopo</td><td>0.000</td>
+          <td><span class="badge badge-red">−0.832</span></td><td>0.000</td><td>0.000</td><td>0.000</td>
+          <td>ct_1002 (0.000)</td><td><span class="badge badge-red">Broken (inference)</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:6px;color:var(--muted);font-size:0.9em;">CrossAttn / CrossAttnTopo collapsed at inference, not training — the
+  related <em>AuxDiagCrossAttn</em> variant trained and inferred fine at 0.822. Fix (identity-init γ gate) + re-inference
+  diagnostic are in <code>scripts/CHD_Dataset030_newmethods_and_crossattn.sh</code>.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">External comparison — MedDINO (Ashwin's project, same test set)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>subclass Dice ↑</th><th>Δ vs DA5 baseline</th><th>Worst case</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">MedDINO Ashwin d4</td><td>0.830</td><td><span class="badge badge-yellow">−0.002</span></td><td>ct_1063 (0.144)</td></tr>
+        <tr><td class="mono">MedDINO d4</td><td>0.827</td><td><span class="badge badge-yellow">−0.005</span></td><td>ct_1063 (0.002)</td></tr>
+        <tr><td class="mono">MedDINO d8</td><td>0.821</td><td><span class="badge badge-yellow">−0.011</span></td><td>ct_1063 (0.143)</td></tr>
+        <tr><td class="mono">MedDINO CHD FiLM d8</td><td>0.813</td><td><span class="badge badge-yellow">−0.019</span></td><td>ct_1063 (0.143)</td></tr>
+        <tr><td class="mono">MedDINO</td><td>0.803</td><td><span class="badge badge-red">−0.029</span></td><td>ct_1063 (0.143)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:6px;color:var(--muted);font-size:0.9em;">Shown for context only (separate project). No MedDINO variant beats the DA5 baseline on this test set.</p>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Per-structure Dice — DA5 family</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>WH</th><th>LV-BP</th><th>RV-BP</th><th>LA</th><th>RA</th><th>Myo</th><th>Ao</th><th>PA</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">DA5 Baseline</td><td>0.909</td><td>0.876</td><td>0.852</td><td>0.874</td><td>0.892</td><td>0.718</td><td>0.837</td><td>0.774</td></tr>
+        <tr><td class="mono">DA5 Cascade TopoSched</td><td>0.904</td><td>0.887</td><td>0.863</td><td>0.885</td><td>0.895</td><td>0.710</td><td>0.836</td><td>0.777</td></tr>
+        <tr><td class="mono">DA5 200e lowres</td><td>0.898</td><td>0.891</td><td>0.871</td><td>0.877</td><td>0.894</td><td>0.700</td><td>0.830</td><td>0.766</td></tr>
+        <tr><td class="mono">DA5 TopoSched</td><td>0.906</td><td>0.877</td><td>0.850</td><td>0.877</td><td>0.890</td><td>0.716</td><td>0.835</td><td>0.772</td></tr>
+        <tr><td class="mono">DA5 200e</td><td>0.904</td><td>0.877</td><td>0.852</td><td>0.873</td><td>0.883</td><td>0.718</td><td>0.832</td><td>0.773</td></tr>
+        <tr><td class="mono">DA5 FiLM V3</td><td>0.904</td><td>0.870</td><td>0.851</td><td>0.873</td><td>0.884</td><td>0.717</td><td>0.833</td><td>0.769</td></tr>
+        <tr><td class="mono">FiLM AuxDiag</td><td>0.903</td><td>0.882</td><td>0.858</td><td>0.863</td><td>0.892</td><td>0.707</td><td>0.838</td><td>0.773</td></tr>
+        <tr><td class="mono">AuxDiag</td><td>0.908</td><td>0.882</td><td>0.855</td><td>0.871</td><td>0.879</td><td>0.718</td><td>0.830</td><td>0.765</td></tr>
+        <tr><td class="mono">AuxDiagTopo</td><td>0.906</td><td>0.878</td><td>0.851</td><td>0.874</td><td>0.883</td><td>0.716</td><td>0.832</td><td>0.773</td></tr>
+        <tr><td class="mono">AuxDiag (ablation)</td><td>0.908</td><td>0.868</td><td>0.849</td><td>0.873</td><td>0.885</td><td>0.717</td><td>0.833</td><td>0.771</td></tr>
+        <tr><td class="mono">AuxDiagCrossAttn</td><td>0.905</td><td>0.869</td><td>0.842</td><td>0.864</td><td>0.872</td><td>0.716</td><td>0.830</td><td>0.759</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <br>
+  <h3 style="margin-bottom:12px;">Takeaways</h3>
+  <ul style="line-height:1.7;">
+    <li><strong>Cascade / low-res context is the only thing that helped</strong> (Cascade TopoSched +0.004, lowres +0.001). Bottleneck conditioning (FiLM / AuxDiag) and full-res topology are within noise of baseline.</li>
+    <li><strong>Myocardium (≈0.71) and PA (≈0.77) are the ceiling</strong> — thin / topologically hard structures drag the mean; chambers and WH are already ≈0.88–0.91.</li>
+    <li><strong>ct_1063 fails for every method</strong> (subclass Dice 0.19–0.34) — a single complex-anatomy case worth a dedicated look, not a model-wide signal.</li>
+    <li><strong>Dice is saturated / non-discriminative here</strong> (1.4-point spread). Ranking on Dice alone is misleading → use <code>scripts/evaluate_topology_dataset030.py</code> (clDice, connected components, centerline recall) to separate methods on the failure mode that matters.</li>
+  </ul>
+  <p style="margin-top:10px;color:var(--muted);font-size:0.9em;">
+    Source: per-case CSVs in <code>SegmentationDetailStandard/Dataset030/dice_results/</code>, computed by
+    <code>dice_analysis.ipynb</code> (32 test cases, fold 0, 200 epochs, ResEncM plans). Last updated 2026-06-16.
+  </p>
 </section>
 
 <!-- ── FOLD-0 ABLATION (Dataset030 / 200 epochs) ── -->

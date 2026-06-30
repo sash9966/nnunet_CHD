@@ -1,0 +1,48 @@
+# chd_region_training.yaml
+# -------------------------------------------------------------------------
+# Controls nnU-Net v2 region-based dataset.json generation
+# (region_based_dataset_json.py).
+#
+# WARNING: region ORDER matters. nnU-Net's `regions_class_order` decides which
+# class "wins" a voxel when regions overlap (later entries overwrite earlier).
+# The generator emits regions_class_order automatically from `priority` below
+# (lower priority number = painted first = lower precedence). Review it.
+# -------------------------------------------------------------------------
+
+# Whether to include derived hard labels (e.g. vsd_orifice_proxy) as their own
+# single-label region in addition to the overlapping groups.
+include_derived_hard_labels: true
+
+# Overlapping / hierarchical regions (name -> member structure NAMES).
+# Each member is resolved to integer ids from the dataset's label map.
+regions:
+  whole_heart:
+    members: [lv, rv, myocardium, la, ra, aorta, pulmonary_artery]
+    priority: 0          # broadest -> painted first, lowest precedence
+  ventricular_blood_pool:
+    members: [lv, rv]
+    priority: 1
+  lv:
+    members: [lv]
+    priority: 2
+  rv:
+    members: [rv]
+    priority: 2
+  myocardium:
+    members: [myocardium]
+    priority: 2
+  la:
+    members: [la]
+    priority: 2
+  ra:
+    members: [ra]
+    priority: 2
+  aorta:
+    members: [aorta]
+    priority: 3
+  pulmonary_artery:
+    members: [pulmonary_artery]
+    priority: 3
+  septal_defect_proxy:
+    members: [septal_defect_proxy]
+    priority: 4          # finest disease landmark -> highest precedence

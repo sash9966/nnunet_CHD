@@ -1,0 +1,47 @@
+# chd_label_map.yaml
+# -------------------------------------------------------------------------
+# Canonical CHD anatomy structures -> integer label IDs in the SOURCE
+# nnU-Net dataset (Dataset030_imageCHD_HU).
+#
+# IMPORTANT
+# - These IDs are NOT hardcoded in code. chd_landmarks.labels resolves each
+#   structure by NAME from the source dataset.json (using the `aliases`
+#   below) and only falls back to `default_ids` if name-resolution fails.
+# - `null` means "this structure is NOT present in the current dataset".
+#   Code MUST treat null structures as unavailable and skip (with a warning)
+#   any derived region that requires them. It must NEVER invent the label.
+#
+# Source label map detected on 2026-06 (Dataset001_CHDdummy / Dataset030):
+#   background=0, LV=1, RV=2, LA=3, RA=4, Myo=5, AO=6, PA=7
+# -------------------------------------------------------------------------
+
+background_id: 0
+
+# Canonical structure -> default integer id (used only if name lookup fails).
+default_ids:
+  lv: 1            # left ventricle blood pool
+  rv: 2            # right ventricle blood pool
+  la: 3            # left atrium
+  ra: 4            # right atrium
+  myocardium: 5    # (LV) myocardium / septum
+  aorta: 6
+  pulmonary_artery: 7
+  pulmonary_veins: null   # NOT annotated in Dataset030 -> placeholder
+
+# Name aliases used to resolve each structure from dataset.json labels.
+# Matching is case-insensitive and whitespace/underscore-insensitive.
+aliases:
+  lv: ["lv", "left ventricle", "lv bloodpool", "lv blood pool", "left ventricle bloodpool"]
+  rv: ["rv", "right ventricle", "rv bloodpool", "rv blood pool", "right ventricle bloodpool"]
+  la: ["la", "left atrium"]
+  ra: ["ra", "right atrium"]
+  myocardium: ["myo", "myocardium", "lv myocardium", "heart muscle", "septum"]
+  aorta: ["ao", "aorta", "aortic"]
+  pulmonary_artery: ["pa", "pulmonary", "pulmonary artery", "pulmonary trunk", "main pulmonary artery"]
+  pulmonary_veins: ["pv", "pulmonary vein", "pulmonary veins"]
+
+# Structures that are vessel-like (centerline / radius reasoning applies).
+vessel_structures: ["aorta", "pulmonary_artery", "pulmonary_veins"]
+
+# Structures treated as blood-pool chambers (for region grouping).
+chamber_structures: ["lv", "rv", "la", "ra"]

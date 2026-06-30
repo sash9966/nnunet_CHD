@@ -1,0 +1,97 @@
+# chd_derived_labels.yaml
+# -------------------------------------------------------------------------
+# Declares HOW each derived region is exported. Three disjoint groups:
+#
+#   A. hard_integer_labels  -> may be merged into a standard nnU-Net integer
+#                              label map (Dataset031 labelsTr) IF confidence
+#                              is high and overwrite_policy allows it.
+#   B. auxiliary_masks      -> exported as separate NIfTI masks only
+#                              (metrics / topology / future prompting).
+#                              NEVER merged into integer labels by default.
+#   C. region_based_targets -> overlapping / hierarchical targets for
+#                              nnU-Net v2 region-based training.
+#
+# `id: auto` means the dataset builder assigns the next free consecutive id
+# AFTER the original anatomy labels (so original IDs are preserved).
+#
+# CONSERVATISM RULES enforced by derived_label_builder.py:
+#  - Original anatomy labels are NEVER overwritten unless overwrite_policy
+#    explicitly allows it AND confidence == high.
+#  - Stenosis / connection ROIs default to auxiliary (disease SUBregions of a
+#    vessel, not separate anatomy) and are NOT merged unless promoted.
+# -------------------------------------------------------------------------
+
+hard_integer_labels:
+
+  # DECISION (start simple): the general CHD model gets ONE unified
+  # "septal defect" label — ASD and VSD are the same kind of lesion (a hole in a
+  # septal wall), so all septal-defect cases (ASD, VSD, AVSD, ToF, DORV) share
+  # it. It is the union of the high-confidence ventricular (LV/RV) and atrial
+  # (LA/RA) gap proxies. The per-septum proxies, pulmonary-stenosis ROI, and the
+  # peri-defect blood-pool shell stay AUXILIARY (evaluation only). A
+  # high-quality detector is a separate, dedicated septal-defect nnU-Net trained
+  # on a defect-focused cohort.
+  septal_defect_proxy:
+    id: auto
+    type: pathology_proxy
+    allowed_when_disease_flags: [VSD, ASD, AVSD, ToF, DORV]
+    construction_method: septal_contact_without_myocardium
+    overwrite_policy: may_overwrite_septal_interface_only
+    confidence_required: high
+    export_as_auxiliary_first: true   # also dump the mask for audit
+
+auxiliary_masks:
+  - peri_septal_defect_roi  # blood-pool shell AROUND the septal defect — EVAL only
+  - vsd_orifice_proxy       # per-septum proxy (granular eval): ventricular
+  - asd_orifice_proxy       # per-septum proxy (granular eval): atrial
+  - pulmonary_stenosis_roi  # stenosis ROI kept auxiliary
+  - lv_rv_near_contact
+  - la_ra_near_contact
+  - lv_rv_false_merge_region
+  - aorta_pulmonary_confusion_interface
+  - aorta_pulmonary_connection_candidate
+  - aorta_pulmonary_identity_boundary
+  - aortic_narrowing_roi
+  - minimum_aortic_radius_point
+  - pre_coarctation_aorta
+  - post_coarctation_aorta
+  - rvot_pulmonary_transition_roi
+  - aorta_vsd_override_region
+  - great_vessel_origin_confusion_roi
+  - hypoplastic_pa_preservation_region
+  - hypoplastic_lv_preservation_region
+  - hypoplastic_aorta_region
+  - hypoplastic_rv_region
+  - absent_rv_pa_connection_region
+  - absent_ra_rv_connection_region
+  - ra_rv_boundary_displacement_roi
+  # placeholders requiring missing anatomy (never produced for Dataset030):
+  - pulmonary_venous_connection_roi
+  - anomalous_pv_return_candidate
+
+# Region-based targets: groups of (anatomy or derived) label NAMES.
+# `region_based_dataset_json.py` resolves names -> id sets at build time.
+region_based_targets:
+  whole_heart:
+    labels: [lv, rv, myocardium, la, ra, aorta, pulmonary_artery]
+  ventricular_blood_pool:
+    labels: [lv, rv]
+  atrial_blood_pool:
+    labels: [la, ra]
+  arterial_system:
+    labels: [aorta, pulmonary_artery]
+  disease_critical_pulmonary:
+    labels: [pulmonary_artery, pulmonary_stenosis_roi]
+  septal_complex:
+    labels: [lv, rv, la, ra, septal_defect_proxy]
+
+# Construction parameters (mm) for region builders. Tunable per dataset.
+construction_params:
+  interface_dilation_mm: 2.0        # near-contact band half-width
+  false_merge_min_contact_mm2: 200.0  # contact area above which a merge is "suspicious"
+  stenosis_radius_drop_frac: 0.6    # local radius < frac * median radius => stenotic
+  stenosis_roi_dilation_mm: 4.0
+  coarctation_radius_drop_frac: 0.6
+  hypoplastic_volume_frac: 0.5      # structure volume < frac * cohort-typical => hypoplastic flag
+  min_component_voxels: 10          # ignore specks below this when counting components
+  peri_defect_shell_mm: 5.0         # radius of the peri-VSD blood-pool shell (eval ROI)

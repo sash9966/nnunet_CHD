@@ -1,0 +1,261 @@
+# chd_disease_rules.yaml
+# -------------------------------------------------------------------------
+# Maps CHD diagnosis flags -> structured, image-space derivation rules.
+#
+# DESIGN NOTES
+# - This is a RESEARCH preprocessing tool. It assumes diagnosis flags are
+#   already provided (from imageCHD_dataset_info.xlsx). It does NOT diagnose.
+# - Clinical definitions (incl. CDC) are referenced only as `source` metadata
+#   to document intent. They are NOT used as segmentation logic. Every rule is
+#   translated into geometry over the EXISTING anatomy labels.
+# - A rule fires for a case only if BOTH (a) its diagnosis flag is set, and
+#   (b) all `relevant_labels` it needs are present in the dataset. Otherwise
+#   it is skipped with a warning. Disease landmarks are never hallucinated.
+#
+# FLAG SOURCE COLUMNS (imageCHD_dataset_info.xlsx, binary layout):
+#   ASD VSD AVSD ToF TGA DORV CAT CA AAH DAA IAA PA APVC DSVC PDA PAS
+#   (PA column = pulmonary atresia; CA = coarctation of aorta;
+#    PAS = pulmonary artery stenosis; CAT = common arterial trunk/truncus;
+#    APVC = anomalous pulmonary venous connection.)
+# Note: the xlsx has NO HLHS column; HLHS rules stay dormant unless a flag
+# is supplied via a different metadata source.
+# -------------------------------------------------------------------------
+
+# Map a canonical disease key -> the spreadsheet column(s) that set its flag.
+# `metadata.py` uses this to read flags from the raw xlsx/csv.
+flag_columns:
+  VSD: ["VSD"]
+  ASD: ["ASD"]
+  AVSD: ["AVSD"]
+  ToF: ["ToF", "TOF", "Fallot", "tetralogy of fallot"]
+  TGA: ["TGA", "transposition"]
+  DORV: ["DORV"]
+  Truncus: ["CAT", "truncus", "truncus arteriosus", "common arterial trunk"]
+  Coarctation: ["CA", "coarctation", "coarctation of aorta"]
+  Pulmonary_Atresia: ["PA", "pulmonary atresia"]
+  Pulmonary_Stenosis: ["PAS", "pulmonary stenosis", "pulmonary artery stenosis"]
+  APVC: ["APVC", "TAPVR", "PAPVR", "anomalous pulmonary venous"]
+  HLHS: ["HLHS", "hypoplastic left heart"]            # no column in xlsx -> dormant
+  Tricuspid_Atresia: ["TA", "tricuspid atresia"]      # dormant unless supplied
+  Ebstein: ["Ebstein", "ebstein anomaly"]             # dormant unless supplied
+
+rules:
+
+  VSD:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/ventricularseptaldefect.html"
+    definition: "Hole in the ventricular septum allowing communication between LV and RV."
+    relevant_labels: [lv, rv, myocardium]
+    derived_regions:
+      - vsd_orifice_proxy
+      - lv_rv_near_contact
+      - lv_rv_false_merge_region
+    expected_topology:
+      - "LV and RV may communicate locally at the VSD."
+      - "LV/RV should NOT be globally merged into one chamber label."
+    metrics:
+      - vsd_centroid_error_mm
+      - vsd_equivalent_diameter_error_mm
+      - lv_rv_false_merge_rate
+      - local_boundary_assd_mm
+      - local_betti_difference
+
+  ToF:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/tetralogyoffallot.html"
+    definition: "VSD + pulmonary/RVOT stenosis + overriding aorta + RV hypertrophy."
+    relevant_labels: [lv, rv, myocardium, aorta, pulmonary_artery]
+    derived_regions:
+      - vsd_orifice_proxy
+      - pulmonary_stenosis_roi
+      - rvot_pulmonary_transition_roi
+      - aorta_vsd_override_region
+      - aorta_pulmonary_confusion_interface
+    expected_topology:
+      - "VSD should be present if label geometry supports it."
+      - "Pulmonary/RVOT narrowing is disease-relevant."
+      - "Aorta may be spatially close to both ventricles / VSD (override)."
+    metrics:
+      - pulmonary_min_diameter_error_mm
+      - pulmonary_min_area_error_mm2
+      - vsd_centroid_error_mm
+      - aorta_pulmonary_leakage_volume_mm3
+      - pa_skeleton_connectivity
+
+  Pulmonary_Atresia:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/pulmonaryatresia.html"
+    definition: "Pulmonary valve absent; normal RV->PA outflow may be absent; alternative pulmonary blood flow."
+    relevant_labels: [rv, pulmonary_artery, aorta]
+    derived_regions:
+      - absent_rv_pa_connection_region
+      - hypoplastic_pa_preservation_region
+      - aorta_pulmonary_connection_candidate
+      - aorta_pulmonary_confusion_interface
+    expected_topology:
+      - "Do NOT force a normal RV-to-PA connection."
+      - "Main PA may be small or absent."
+      - "Preserve small branch-PA components if annotated."
+      - "Aorta/pulmonary adjacency matters but should not imply label fusion."
+    metrics:
+      - pulmonary_label_presence
+      - pulmonary_volume_error_mm3
+      - aorta_pulmonary_confusion_volume_mm3
+      - pa_component_count
+      - pa_skeleton_connectivity
+
+  Pulmonary_Stenosis:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Narrowing at/near the pulmonary valve or pulmonary artery."
+    relevant_labels: [pulmonary_artery]
+    derived_regions:
+      - pulmonary_stenosis_roi
+    expected_topology:
+      - "PA should remain connected through the narrowed segment if annotated."
+    metrics:
+      - pulmonary_min_diameter_error_mm
+      - pulmonary_min_area_error_mm2
+      - pa_skeleton_connectivity
+
+  Coarctation:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/coarctationofaorta.html"
+    definition: "Narrowing of part of the aorta."
+    relevant_labels: [aorta]
+    derived_regions:
+      - aortic_narrowing_roi
+      - minimum_aortic_radius_point
+      - pre_coarctation_aorta
+      - post_coarctation_aorta
+    expected_topology:
+      - "Aorta should remain connected through the narrowed segment if annotated."
+      - "The narrowed segment is clinically important despite small volume."
+    metrics:
+      - aortic_min_diameter_error_mm
+      - aortic_min_area_error_mm2
+      - aortic_centerline_continuity
+      - local_boundary_assd_mm
+
+  TGA:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/d-tga.html"
+    definition: "Transposition of the great arteries; aorta/pulmonary origins swapped."
+    relevant_labels: [aorta, pulmonary_artery, lv, rv]
+    derived_regions:
+      - great_vessel_origin_confusion_roi
+      - aorta_pulmonary_identity_boundary
+      - aorta_pulmonary_confusion_interface
+    expected_topology:
+      - "Great-vessel identity/origin matters."
+      - "Aorta/pulmonary swap or leakage is disease-relevant."
+    metrics:
+      - aorta_pulmonary_leakage_volume_mm3
+      - aorta_pulmonary_confusion_volume_mm3
+
+  DORV:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Double outlet right ventricle; both great vessels arise from RV."
+    relevant_labels: [aorta, pulmonary_artery, rv, lv]
+    derived_regions:
+      - great_vessel_origin_confusion_roi
+      - aorta_pulmonary_confusion_interface
+      - vsd_orifice_proxy
+    expected_topology:
+      - "Both great vessels may arise predominantly from the RV side."
+      - "An associated VSD is common."
+    metrics:
+      - aorta_pulmonary_confusion_volume_mm3
+      - vsd_centroid_error_mm
+
+  Truncus:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Common arterial trunk; single great vessel overriding a VSD."
+    relevant_labels: [aorta, pulmonary_artery, lv, rv]
+    derived_regions:
+      - aorta_pulmonary_connection_candidate
+      - aorta_pulmonary_confusion_interface
+      - vsd_orifice_proxy
+    expected_topology:
+      - "Aorta and pulmonary may share/originate from a common trunk."
+      - "Do not assume separated great vessels."
+    metrics:
+      - aorta_pulmonary_confusion_volume_mm3
+      - aorta_pulmonary_leakage_volume_mm3
+
+  ASD:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/atrialseptaldefect.html"
+    definition: "Hole in the atrial septum between LA and RA."
+    relevant_labels: [la, ra]
+    derived_regions:
+      - asd_orifice_proxy
+      - la_ra_near_contact
+    expected_topology:
+      - "LA and RA may communicate locally at the ASD."
+      - "LA/RA should NOT be globally merged."
+    metrics:
+      - local_boundary_assd_mm
+      - local_betti_difference
+
+  AVSD:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/avsd.html"
+    definition: "Atrioventricular septal defect; central defect across atrial+ventricular septa."
+    relevant_labels: [lv, rv, la, ra, myocardium]
+    derived_regions:
+      - vsd_orifice_proxy
+      - asd_orifice_proxy
+      - lv_rv_near_contact
+      - la_ra_near_contact
+    expected_topology:
+      - "Central AV septal communication may be present."
+    metrics:
+      - vsd_centroid_error_mm
+      - local_boundary_assd_mm
+
+  HLHS:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/hlhs.html"
+    definition: "Hypoplastic left heart; underdeveloped LV / ascending aorta."
+    relevant_labels: [lv, aorta, la]
+    derived_regions:
+      - hypoplastic_lv_preservation_region
+      - hypoplastic_aorta_region
+    expected_topology:
+      - "Small LV/aorta may be true disease anatomy, not segmentation failure."
+      - "Do not remove small but disease-relevant components."
+    metrics:
+      - lv_volume_preservation
+      - aorta_volume_preservation
+
+  Tricuspid_Atresia:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Absent/atretic tricuspid valve; no normal RA->RV inflow."
+    relevant_labels: [ra, rv]
+    derived_regions:
+      - absent_ra_rv_connection_region
+      - hypoplastic_rv_region
+    expected_topology:
+      - "Do NOT force normal RA-to-RV continuity."
+    metrics:
+      - rv_volume_preservation
+
+  Ebstein:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Apically displaced tricuspid valve; atrialized RV."
+    relevant_labels: [ra, rv]
+    derived_regions:
+      - ra_rv_boundary_displacement_roi
+    expected_topology:
+      - "RA/RV boundary may be displaced; atrialized RV portion."
+    metrics:
+      - local_boundary_assd_mm
+
+  # ---- Dormant / not geometrically derivable in Dataset030 ----------------
+  # APVC (anomalous pulmonary venous connection) needs a pulmonary_veins
+  # label, which is absent. Kept here so metadata parsing recognises the flag,
+  # but no hard region is produced (auxiliary placeholder + warning only).
+  APVC:
+    source: "https://www.cdc.gov/ncbddd/heartdefects/index.html"
+    definition: "Anomalous pulmonary venous connection (TAPVR/PAPVR)."
+    relevant_labels: [pulmonary_veins, left_atrium, right_atrium]
+    derived_regions:
+      - pulmonary_venous_connection_roi
+      - anomalous_pv_return_candidate
+    expected_topology:
+      - "Do not aggressively delete pulmonary venous components."
+    metrics:
+      - pulmonary_label_presence
+    requires_missing_anatomy: true

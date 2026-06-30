@@ -1,0 +1,74 @@
+# chd_metric_config.yaml
+# -------------------------------------------------------------------------
+# Selects which disease-aware metrics chd_landmarks.metrics computes, and the
+# parameters they use. Metrics requiring optional libs (e.g. gudhi for Betti-1)
+# degrade gracefully to None with a warning when the lib is unavailable.
+# -------------------------------------------------------------------------
+
+# Always computed for every foreground label.
+general_metrics:
+  - dice
+  - hd95
+  - assd
+  - centroid_distance_mm
+  - volume_difference_mm3
+  - connected_component_difference
+
+# Disease-conditioned metric groups (only run when the case has the flag and
+# the required derived GT / labels exist).
+disease_metrics:
+  VSD:
+    - vsd_detection            # TP/FP/FN vs derived VSD proxy
+    - vsd_centroid_error_mm
+    - vsd_equivalent_diameter_error_mm
+    - lv_rv_false_merge_indicator
+    - local_boundary_assd_mm
+    - local_betti_difference
+  ToF:
+    - pulmonary_min_diameter_error_mm
+    - pulmonary_min_area_proxy_error
+    - pa_component_count
+    - pa_skeleton_connectivity
+    - aorta_pulmonary_leakage_volume_mm3
+    - vsd_centroid_error_mm
+  Pulmonary_Atresia:
+    - pulmonary_label_presence
+    - pulmonary_volume_error_mm3
+    - pa_component_count
+    - pa_skeleton_connectivity
+    - aorta_pulmonary_confusion_volume_mm3
+  Pulmonary_Stenosis:
+    - pulmonary_min_diameter_error_mm
+    - pulmonary_min_area_proxy_error
+    - pa_skeleton_connectivity
+  Coarctation:
+    - aortic_min_diameter_error_mm
+    - aortic_min_area_proxy_error
+    - aortic_centerline_continuity
+    - local_boundary_assd_mm
+  TGA:
+    - aorta_pulmonary_leakage_volume_mm3
+    - aorta_pulmonary_confusion_volume_mm3
+  DORV:
+    - aorta_pulmonary_confusion_volume_mm3
+  Truncus:
+    - aorta_pulmonary_confusion_volume_mm3
+    - aorta_pulmonary_leakage_volume_mm3
+  HLHS:
+    - lv_volume_preservation
+    - aorta_volume_preservation
+
+# Topology metrics (Betti-1 / Euler need optional libs; fall back to None).
+topology_metrics:
+  - betti0_difference          # connected components (always available, scipy)
+  - betti1_difference          # loops/tunnels (optional: gudhi/cripser)
+  - euler_characteristic_difference
+  - skeleton_branch_count
+  - cldice                     # for vessel-like labels (aorta, pulmonary_artery)
+
+params:
+  hd95_percentile: 95
+  vessel_labels: [aorta, pulmonary_artery]
+  confusion_band_dilation_mm: 2.0
+  min_component_voxels: 10
+  skeleton_method: skeletonize_3d   # skimage; falls back to skeletonize for 2D
