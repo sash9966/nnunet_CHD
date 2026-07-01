@@ -35,7 +35,7 @@ from . import io
 from .derived_label_builder import DerivedLabelBuilder
 from .disease_rules import load_rules
 from .labels import load_label_map
-from .metadata import CaseMetadata, load_disease_flags, summarize
+from .metadata import CaseMetadata, load_disease_flags, normalize_case_key, summarize
 
 
 def _link_or_copy(src: Path, dst: Path, copy: bool) -> None:
@@ -134,12 +134,16 @@ def build_dataset(
 
     report_rows: List[dict] = []
     full_report: Dict[str, dict] = {}
+    n_matched = 0  # cases whose id matched a metadata row
 
     for lf in label_files:
-        case_id = io.case_id_from_label_file(lf.name, file_ending)
-        meta = meta_all.get(case_id, CaseMetadata(case_id=case_id, flags={}))
-        if case_id not in meta_all:
-            io.warn(f"{case_id}: no metadata row found -> treated as no-disease (flags unknown)")
+        case_id = io.case_id_from_label_file(lf.name, file_ending)   # keeps _image (file naming)
+        meta_key = normalize_case_key(case_id)                        # bare id for flag lookup
+        meta = meta_all.get(meta_key, CaseMetadata(case_id=meta_key, flags={}))
+        if meta_key in meta_all:
+            n_matched += 1
+        else:
+            io.warn(f"{case_id} (key '{meta_key}'): no metadata row found -> treated as no-disease")
 
         lab = io.read_label(lf)
         derivation = builder.build_for_case(
@@ -189,6 +193,20 @@ def build_dataset(
         })
         print(f"  [OK] {case_id:>12}  flags={meta.active_diseases() or '-'}  "
               f"derived={sorted(derivation.auxiliary_masks.keys()) or '-'}")
+
+    # --- guard: a naming mismatch that matched ZERO metadata rows means no
+    #     disease flags were read, so NO disease labels were derived -> abort
+    #     loudly instead of silently shipping a defect-free dataset.
+    if n_matched == 0:
+        example = io.case_id_from_label_file(label_files[0].name, file_ending)
+        raise SystemExit(
+            f"ERROR: no label case id matched a metadata row (0/{len(label_files)}).\n"
+            f"  Example case id from labels: '{example}' -> lookup key "
+            f"'{normalize_case_key(example)}'.\n"
+            f"  Metadata keys look like: {list(meta_all)[:3]}.\n"
+            f"  Check --metadata ({metadata_path}) and the id-prefix / naming. "
+            f"No disease labels would be derived, so the build is aborted.")
+    print(f"  matched metadata for {n_matched}/{len(label_files)} cases")
 
     # --- dataset.json ---------------------------------------------------
     _write_dataset_json(dst_root, channel_names, builder.merged_dataset_labels(),

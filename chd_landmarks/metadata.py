@@ -35,6 +35,17 @@ def id_to_case_key(raw_id: str, prefix: str = "ct_") -> str:
     return f"{prefix}{numeric}" if numeric else raw_id
 
 
+def normalize_case_key(case_id: str) -> str:
+    """Strip channel / image suffixes from a case identifier for metadata lookup.
+
+    nnU-Net case ids can carry a dataset-specific suffix (e.g. Dataset030 uses
+    ``ct_1001_image``, and channel files add ``_0000``). Diagnosis tables are
+    keyed by the bare id (``ct_1001``), so strip those trailing tokens before
+    looking flags up. File names / symlinks keep the original id.
+    """
+    return re.sub(r"(_image|_0000)+$", "", str(case_id).strip())
+
+
 # ---------------------------------------------------------------------------
 # Spreadsheet reading (mirrors scripts/make_disease_map.py, kept independent)
 # ---------------------------------------------------------------------------

@@ -256,6 +256,14 @@ def test_peri_septal_roi_eval_region():
         assert int(peri.mask.sum()) < int(((seg == 1) | (seg == 2)).sum())
 
 
+def test_normalize_case_key():
+    from chd_landmarks.metadata import normalize_case_key
+    assert normalize_case_key("ct_1001_image") == "ct_1001"   # Dataset030 naming
+    assert normalize_case_key("ct_1001_0000") == "ct_1001"     # channel suffix
+    assert normalize_case_key("ct_1001_image_0000") == "ct_1001"
+    assert normalize_case_key("ct_1001") == "ct_1001"          # already bare
+
+
 def test_septal_defect_hard_label():
     """The general dataset promotes ONE unified septal-defect integer label."""
     with tempfile.TemporaryDirectory() as tmp:
