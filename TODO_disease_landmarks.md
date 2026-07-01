@@ -1,4 +1,4 @@
-# TODO — Disease-Landmark System (Dataset031 + septal-defect eval)
+# TODO — Disease-Landmark System (Dataset050 + septal-defect eval)
 
 Two workflows: **server** = one pullable bash/SLURM script (build → preprocess → train → predict),
 **local** = the Jupyter notebook (in-notebook septal-defect eval, CPU, no GPU needed).
@@ -13,25 +13,25 @@ Pull the repo, then submit the script. It does everything (`.done` markers make 
 
 ```bash
 git checkout all-experiments && git pull
-sbatch scripts/CHD_Dataset031_disease_landmarks.sh
-#   (or run directly on a GPU node:  bash scripts/CHD_Dataset031_disease_landmarks.sh)
+sbatch scripts/CHD_Dataset050_disease_landmarks.sh
+#   (or run directly on a GPU node:  bash scripts/CHD_Dataset050_disease_landmarks.sh)
 ```
 
 Phases inside the script:
-- **0** build `Dataset031_imageCHD_DiseaseLandmarks` from Dataset030 (source read-only, images symlinked)
-- **1** `nnUNetv2_plan_and_preprocess -d 31 -pl nnUNetPlannerResEncM -c 3d_fullres --verify_dataset_integrity`
+- **0** build `Dataset050_imageCHD_DiseaseLandmarks` from Dataset030 (source read-only, images symlinked)
+- **1** `nnUNetv2_plan_and_preprocess -d 50 -pl nnUNetPlannerResEncM -c 3d_fullres --verify_dataset_integrity`
 - **2** train `nnUNetTrainerDA5_200epochs` (3d_fullres, fold 0) → predict test set → `predictions/DA5_baseline`
 - **3** train `nnUNetTrainerDA5DiseaseLandmark_200epochs` → predict → `predictions/DA5DiseaseLandmark`
 
 - [ ] 1. `git pull`
-- [ ] 2. `sbatch scripts/CHD_Dataset031_disease_landmarks.sh`
+- [ ] 2. `sbatch scripts/CHD_Dataset050_disease_landmarks.sh`
 - [ ] 3. when done, **copy the two prediction folders back** into the Alison
       `Dataset030/predictions/` (e.g. `DA5DiseaseLandmark200e`) and add them to the notebook's
       method list (Step 2 `DATASET_CONFIG`) so the local eval picks them up.
-- [ ] 4. (optional, for my inspection) copy back `Dataset031/chd_derivation_report.csv`,
+- [ ] 4. (optional, for my inspection) copy back `Dataset050/chd_derivation_report.csv`,
       training `progress.png`, `validation/summary.json`.
 
-Notes: SLURM logs → `/scratch/users/sastocke/nnunet_CHD/logs/D031-landmarks_%j.{out,err}`.
+Notes: SLURM logs → `/scratch/users/sastocke/nnunet_CHD/logs/D050-landmarks_%j.{out,err}`.
 Edit the header paths/partition/env in the script if your cluster layout differs.
 I cannot see the server FS — commit/scp the small artifacts back if you want my read.
 
@@ -49,7 +49,7 @@ derivation primitives from the `chd_landmarks` library.
 - [ ] 1. Run cells: Step 1 (dice fns), Step 2 (settings), Step 3 (compute Dice) — the usual prereqs.
 - [ ] 2. Run **Step 10** — septal-defect ranking + per-case table + bar plot render inline.
       Set `RECOMPUTE_SEPTAL = True` to re-derive; leave `False` to use cached per-case CSVs.
-- [ ] 3. When the Dataset031 predictions arrive from the server, add them as methods (Step 2) and
+- [ ] 3. When the Dataset050 predictions arrive from the server, add them as methods (Step 2) and
       re-run Steps 3 + 10.
 
 **Artifacts written (readable offline):**
@@ -65,6 +65,6 @@ the nnunet_CHD repo lives elsewhere.
 
 ## Notes
 - The septal defect is derived from where blood pools touch (SDF4CHD-style), applied to BOTH GT and
-  predictions, so it evaluates all existing predictions with no retraining. The Dataset031 model
+  predictions, so it evaluates all existing predictions with no retraining. The Dataset050 model
   adds a direct septal label (id 8) as an additional variant.
 - Full guide: `docs/chd_disease_landmark_nnunet.md`.

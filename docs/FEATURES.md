@@ -22,7 +22,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `region_scaffold.py` | `RegionScaffoldMixin` | Hierarchical region supervision (whole-heart/blood-pool/chambers/ventricles/atria/great-vessels/myocardium) on soft probs; stepwise λ 0.3→0.15→0.05; network unchanged |
 | `vessel_topo.py` | `VesselFocusedTopologyMixin` | Binary great-vessel (AO∪PA) soft-clDice as one connected structure; warmup 50→150, cap 0.15; network unchanged |
 | `centerline_aux.py` | `CenterlineAuxMixin` | Centerline-weighted CE on AO/PA (weight = 1+α·skeleton from GT, detached); on-the-fly soft skeleton; network unchanged |
-| `disease_landmark.py` | `DiseaseLandmarkMixin` | For `Dataset031_imageCHD_DiseaseLandmarks`: soft-Dice on derived hard labels (vsd/asd_orifice_proxy, resolved by name) with **positive-supervision only** (unverified absence never penalised) + optional great-vessel (AO∪PA) clDice; λ_disease 0.3, λ_vessel_cldice 0.1; self-disables if no derived labels; network unchanged |
+| `disease_landmark.py` | `DiseaseLandmarkMixin` | For `Dataset050_imageCHD_DiseaseLandmarks`: soft-Dice on derived hard labels (vsd/asd_orifice_proxy, resolved by name) with **positive-supervision only** (unverified absence never penalised) + optional great-vessel (AO∪PA) clDice; λ_disease 0.3, λ_vessel_cldice 0.1; self-disables if no derived labels; network unchanged |
 
 Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.py` (`SoftRegionScaffoldLoss`, `BinaryVesselClDiceLoss`, `CenterlineWeightedCELoss`, `resolve_chd_label_ids`, `build_region_groups`) — unit-tested by `nnunetv2/tests/test_anatomy_losses.py` without importing a trainer.
 
@@ -110,7 +110,7 @@ Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.
 | `nnUNetTrainerDA5VesselFocusedTopo` + `_100e/_200e/_500e` | `nnUNetTrainerDA5VesselFocusedTopo.py` | Binary AO∪PA great-vessel clDice (continuity-focused) |
 | `nnUNetTrainerDA5CenterlineAux` + `_100e/_200e/_500e` | `nnUNetTrainerDA5CenterlineAux.py` | Centerline-weighted CE on the great vessels |
 
-### Disease-landmark set (for `Dataset031_imageCHD_DiseaseLandmarks`)
+### Disease-landmark set (for `Dataset050_imageCHD_DiseaseLandmarks`)
 | Class | File | Idea |
 |---|---|---|
 | `nnUNetTrainerDA5DiseaseLandmark` + `_100e/_200e/_500e` | `nnUNetTrainerDA5DiseaseLandmark.py` | Soft-Dice on derived disease-proxy labels (positive-supervision only) + great-vessel clDice; pairs with the `chd_landmarks` package (see §9) |
@@ -219,7 +219,7 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | Dataset030 | 30 | `Dataset030_imageCHD_HU` | Kaggle imageCHD with HU values | Yes (same labels) | More vessel branches, less smooth |
 | Dataset040 | 40 | `Dataset040_WH_ImageCHD_HU_Detail` | **Binary whole-heart** derived from Dataset030 (all 7 fg labels collapsed to 1) | Yes (via stratified eval only) | Stage 1 of the whole-heart-first pipeline; built by `scripts/convert_imagechd_to_wholeheart.py`. **Stage 2 spec:** `experiments/wholeheart_decomposition/STAGE2_SPEC.md` + `anatomy_priors.yaml` (anatomy clarification, soft topology priors, disease overrides for TGA/DORV/ToF/PuA/HLHS, AO-vs-PA feature menu, HITL capture format) |
 | Dataset041 | 41 | `Dataset041_ImageCHD_HU_MaskCond` | **2-channel mask-conditioned** Stage-2 dataset (channel 0 = CT, channel 1 = binary heart prior with `nonorm`; labels = Dataset030 7-class) | Yes | Stage-2 Approach A. Built by `experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py` (defaults to `--mask-source gt`; switch to `--mask-source predicted --mask-dir-{tr,ts}` once Stage-1 has produced binary masks for every case). |
-| Dataset031 | 31 | `Dataset031_imageCHD_DiseaseLandmarks` | **Disease-landmark** dataset derived from Dataset030: 7 anatomy labels + conservative derived disease-proxy integer labels (vsd/asd_orifice_proxy, ids 8+) | Yes | Built by the `chd_landmarks` package (see §9). Source read-only (images symlinked). Also ships per-case auxiliary masks (`derived_masksTr/`) + annotation status. Train vanilla or with `nnUNetTrainerDA5DiseaseLandmark`. |
+| Dataset050 | 50 | `Dataset050_imageCHD_DiseaseLandmarks` | **Disease-landmark** dataset derived from Dataset030: 7 anatomy labels + conservative derived disease-proxy integer labels (vsd/asd_orifice_proxy, ids 8+) | Yes | Built by the `chd_landmarks` package (see §9). Source read-only (images symlinked). Also ships per-case auxiliary masks (`derived_masksTr/`) + annotation status. Train vanilla or with `nnUNetTrainerDA5DiseaseLandmark`. |
 
 **Label scheme (all datasets use same names):**
 
@@ -301,7 +301,7 @@ reads source read-only and writes only new datasets. Full guide:
 | `topology.py` | Connected components, skeletons, contact surfaces, Betti/Euler (optional libs) |
 | `derived_regions.py` | Builders: VSD/ASD proxy, stenosis/coarctation ROI, AO/PA interface+candidate, hypoplastic preservation |
 | `derived_label_builder.py` | Per-case orchestration + conservative merge policy (confidence-gated, interface-only overwrite) |
-| `nnunet_dataset_builder.py` | Build `Dataset031` (merged labels + auxiliary masks + reports) |
+| `nnunet_dataset_builder.py` | Build `Dataset050` (merged labels + auxiliary masks + reports) |
 | `region_based_dataset_json.py` | nnU-Net v2 region-based dataset.json (non-destructive by default) |
 | `metrics.py` | Disease-aware metrics beyond Dice (VSD detection, vessel min-diameter, AO/PA leakage, clDice, volume preservation, Betti diffs) |
 | `cli.py` | `inspect-dataset`, `derive-case`, `build-dataset`, `make-region-dataset-json`, `evaluate-disease-metrics` |

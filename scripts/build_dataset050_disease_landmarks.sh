@@ -5,20 +5,20 @@
 #
 # ISOLATION CONTRACT (matches the rest of scripts/):
 #   * The SOURCE dataset (Dataset030) is read ONLY — images are symlinked.
-#   * A NEW dataset (Dataset031_imageCHD_DiseaseLandmarks) is created; nothing
+#   * A NEW dataset (Dataset050_imageCHD_DiseaseLandmarks) is created; nothing
 #     existing is modified.
-#   * plan_and_preprocess is run ONLY on the new Dataset031, and only if you
+#   * plan_and_preprocess is run ONLY on the new Dataset050, and only if you
 #     pass --preprocess (off by default). It NEVER touches Dataset030.
 #
 # Usage:
 #   bash scripts/build_dataset031_disease_landmarks.sh            # inspect + build
-#   bash scripts/build_dataset031_disease_landmarks.sh --preprocess  # + plan/preprocess D031
+#   bash scripts/build_dataset050_disease_landmarks.sh --preprocess  # + plan/preprocess D050
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
 : "${nnUNet_raw:?Set nnUNet_raw}"
 SOURCE_DS="${SOURCE_DS:-Dataset030_imageCHD_HU}"
-TARGET_ID="${TARGET_ID:-31}"
+TARGET_ID="${TARGET_ID:-50}"
 TARGET_NAME="${TARGET_NAME:-imageCHD_DiseaseLandmarks}"
 METADATA="${METADATA:-${nnUNet_raw}/${SOURCE_DS}/imageCHD_dataset_info.xlsx}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

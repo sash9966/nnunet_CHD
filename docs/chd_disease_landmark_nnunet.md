@@ -13,7 +13,7 @@ topology, and (optionally) a region-based or disease-aware training setup.
 
 It is fully isolated from upstream nnU-Net and the existing datasets: source
 datasets are read **read-only** (images symlinked), and only **new** datasets
-(e.g. `Dataset031_*`) are ever written. It never calls `plan_and_preprocess`.
+(e.g. `Dataset050_*`) are ever written. It never calls `plan_and_preprocess`.
 
 ---
 
@@ -82,12 +82,12 @@ This is written per-case to `case_metadata/<case>.json` and summarised in
 
 | Situation | Use |
 |---|---|
-| Add a few confident disease classes (VSD/ASD proxy) as extra labels | **vanilla nnU-Net** on the merged `Dataset031` integer labels |
+| Add a few confident disease classes (VSD/ASD proxy) as extra labels | **vanilla nnU-Net** on the merged `Dataset050` integer labels |
 | Hierarchical / overlapping targets (whole-heart ⊃ ventricles, vsd_complex) | **region-based nnU-Net v2** (`make-region-dataset-json`) |
 | Up-weight rare disease labels / add vessel clDice during training | **custom trainer** `nnUNetTrainerDA5DiseaseLandmark` (see §7) |
 | Just want better evaluation, no retraining | **metrics-only**: `evaluate-disease-metrics` on existing predictions |
 
-## 5. Build the dataset (`Dataset031`)
+## 5. Build the dataset (`Dataset050`)
 
 ```bash
 # inspect first — reports resolved labels + which diseases are derivable
@@ -98,13 +98,13 @@ python -m chd_landmarks.cli inspect-dataset \
 # build a NEW dataset (source is read-only; images symlinked)
 python -m chd_landmarks.cli build-dataset \
     --source-dataset   $nnUNet_raw/Dataset030_imageCHD_HU \
-    --target-dataset-id 031 \
+    --target-dataset-id 050 \
     --target-dataset-name imageCHD_DiseaseLandmarks \
     --metadata         $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_dataset_info.xlsx \
     --out-root         $nnUNet_raw
 ```
 
-Produces `Dataset031_imageCHD_DiseaseLandmarks/` with `imagesTr`, `labelsTr`
+Produces `Dataset050_imageCHD_DiseaseLandmarks/` with `imagesTr`, `labelsTr`
 (merged), `derived_masksTr/<case>/`, `case_metadata/<case>.json`, `dataset.json`,
 and `chd_derivation_report.{json,csv}`.
 
@@ -112,22 +112,22 @@ and `chd_derivation_report.{json,csv}`.
 
 ```bash
 # one-time, on the NEW dataset only (never the source)
-nnUNetv2_plan_and_preprocess -d 31 -pl nnUNetPlannerResEncM --verify_dataset_integrity
+nnUNetv2_plan_and_preprocess -d 50 -pl nnUNetPlannerResEncM --verify_dataset_integrity
 
 # vanilla nnU-Net with the extra disease classes
-nnUNetv2_train 31 3d_fullres 0
+nnUNetv2_train 50 3d_fullres 0
 
 # or disease-aware trainer (rare-label soft-Dice + vessel clDice)
-nnUNetv2_train 31 3d_fullres 0 -tr nnUNetTrainerDA5DiseaseLandmark_200epochs
+nnUNetv2_train 50 3d_fullres 0 -tr nnUNetTrainerDA5DiseaseLandmark_200epochs
 ```
 
 ### Region-based training (optional, overlapping targets)
 ```bash
 python -m chd_landmarks.cli make-region-dataset-json \
-    --dataset $nnUNet_raw/Dataset031_imageCHD_DiseaseLandmarks
+    --dataset $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks
 # review printed regions_class_order, then install it:
 python -m chd_landmarks.cli make-region-dataset-json \
-    --dataset $nnUNet_raw/Dataset031_imageCHD_DiseaseLandmarks --apply
+    --dataset $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks --apply
 ```
 `--apply` backs the integer `dataset.json` up to `dataset.json.integer_backup`.
 **Region order matters** — `regions_class_order` is derived from each region's
@@ -156,9 +156,9 @@ these later.
 ```bash
 python -m chd_landmarks.cli evaluate-disease-metrics \
     --pred  pred/ct_1012.nii.gz --gt gt/ct_1012.nii.gz \
-    --derived-gt-dir $nnUNet_raw/Dataset031_imageCHD_DiseaseLandmarks/derived_masksTr/ct_1012 \
+    --derived-gt-dir $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks/derived_masksTr/ct_1012 \
     --metadata imageCHD_dataset_info.xlsx --case-id ct_1012 \
-    --dataset-dir $nnUNet_raw/Dataset031_imageCHD_DiseaseLandmarks \
+    --dataset-dir $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks \
     --out metrics_ct_1012.json
 ```
 Computes: per-label Dice/HD95/ASSD/volume/CC-diff; vessel clDice + centerline

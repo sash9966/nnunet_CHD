@@ -273,11 +273,11 @@
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
       <span class="badge badge-accent">★ Latest · 2026-07-01</span>
-      <h3 style="margin-left:10px;">Disease-Landmark System + Dataset031 + septal-defect evaluation</h3>
+      <h3 style="margin-left:10px;">Disease-Landmark System + Dataset050 + septal-defect evaluation</h3>
     </div>
     <p>New isolated <code>chd_landmarks/</code> package derives CHD disease landmarks from
     ground-truth anatomy + diagnosis flags and builds a brand-new
-    <code>Dataset031_imageCHD_DiseaseLandmarks</code> (source read-only). Adds a unified
+    <code>Dataset050_imageCHD_DiseaseLandmarks</code> (source read-only). Adds a unified
     <strong>septal-defect</strong> label, the <code>nnUNetTrainerDA5DiseaseLandmark</code> trainer,
     and a GT-derived-vs-prediction-derived septal-defect metric wired into the Alison
     <code>dice_analysis.ipynb</code> (Step 10). <a href="#disease-landmarks">Jump to details →</a></p>
@@ -314,7 +314,7 @@
       <ul style="font-size:13px; line-height:1.7;">
         <li>Isolated <code>chd_landmarks/</code> package (13 modules) + 5 configs. Reads the source
             dataset <strong>read-only</strong> (images symlinked); writes only the new
-            <code>Dataset031_imageCHD_DiseaseLandmarks</code>. Never calls <code>plan_and_preprocess</code>
+            <code>Dataset050_imageCHD_DiseaseLandmarks</code>. Never calls <code>plan_and_preprocess</code>
             on existing data.</li>
         <li><strong>Unified septal-defect label</strong>: ASD/VSD/AVSD/ToF/DORV all share one
             <code>septal_defect</code> class — a hole in a septal wall, found where blood pools touch
@@ -328,9 +328,9 @@
       </ul>
       <h3 style="margin-top:12px;">Build &amp; train (server)</h3>
       <pre style="background:rgba(0,0,0,0.18); padding:10px; border-radius:6px; overflow:auto; font-size:12px;">bash scripts/build_dataset031_disease_landmarks.sh
-nnUNetv2_plan_and_preprocess -d 31 -pl nnUNetPlannerResEncM --verify_dataset_integrity
-nnUNetv2_train 31 3d_fullres 0                     # vanilla (septal = label 8)
-nnUNetv2_train 31 3d_fullres 0 \
+nnUNetv2_plan_and_preprocess -d 50 -pl nnUNetPlannerResEncM --verify_dataset_integrity
+nnUNetv2_train 50 3d_fullres 0                     # vanilla (septal = label 8)
+nnUNetv2_train 50 3d_fullres 0 \
     -tr nnUNetTrainerDA5DiseaseLandmark_200epochs  # disease-aware</pre>
     </div>
     <div>
@@ -499,7 +499,7 @@ nnUNetv2_train 31 3d_fullres 0 \
             <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMTopo<br><small>_100epochs</small></td><td>DA5 + FiLM + clDice (fixed w=0.2)</td><td><span class="badge badge-green">Working</span></td></tr>
             <tr><td class="mono">nnUNetTrainerDA5CascadeTopoScheduled<br><small>_100epochs</small></td><td>DA5 + clDice with schedule</td><td><span class="badge badge-accent">New</span></td></tr>
             <tr><td class="mono">nnUNetTrainerDA5CascadeFiLMAdjacency</td><td>DA5 + FiLM + adjacency loss (placeholder)</td><td><span class="badge badge-red">Pending</span></td></tr>
-            <tr><td class="mono">nnUNetTrainerDA5DiseaseLandmark<br><small>_100/_200/_500epochs</small></td><td>Disease-proxy soft-Dice (positive-only) + AO∪PA clDice — for Dataset031 (chd_landmarks pkg)</td><td><span class="badge badge-accent">New</span></td></tr>
+            <tr><td class="mono">nnUNetTrainerDA5DiseaseLandmark<br><small>_100/_200/_500epochs</small></td><td>Disease-proxy soft-Dice (positive-only) + AO∪PA clDice — for Dataset050 (chd_landmarks pkg)</td><td><span class="badge badge-accent">New</span></td></tr>
           </tbody>
         </table>
       </div>
