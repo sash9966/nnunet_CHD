@@ -54,6 +54,7 @@ SOURCE_NAME="Dataset030_imageCHD_HU"
 DATASET_ID=50
 DATASET_NAME="Dataset050_imageCHD_DiseaseLandmarks"
 PLANNER="nnUNetPlannerResEncM"
+PLANS="nnUNetResEncUNetMPlans"     # plans identifier the ResEncM planner writes (pass to train/predict via -p)
 FULLRES="3d_fullres"
 FOLD=0
 METADATA="${REPO}/imageCHD_dataset_info.xlsx"      # shipped in repo
@@ -123,13 +124,13 @@ fi
 # ─────────────────────────────────────────────
 if [ ! -f "${CKPT_DIR}/02_train_base.done" ]; then
   echo "[Phase 2] train ${TRAINER_BASE}"
-  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER_BASE}"
+  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER_BASE}" -p "${PLANS}"
   touch "${CKPT_DIR}/02_train_base.done"
 fi
 if [ ! -f "${CKPT_DIR}/02_pred_base.done" ]; then
   echo "[Phase 2] predict ${TRAINER_BASE}"
   nnUNetv2_predict -i "${IN_DIR}" -o "${PRED_BASE}/DA5_baseline" \
-      -d "${DATASET_ID}" -c "${FULLRES}" -f "${FOLD}" -tr "${TRAINER_BASE}"
+      -d "${DATASET_ID}" -c "${FULLRES}" -f "${FOLD}" -tr "${TRAINER_BASE}" -p "${PLANS}"
   touch "${CKPT_DIR}/02_pred_base.done"
 fi
 
@@ -138,13 +139,13 @@ fi
 # ─────────────────────────────────────────────
 if [ ! -f "${CKPT_DIR}/03_train_dlm.done" ]; then
   echo "[Phase 3] train ${TRAINER_DLM}"
-  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER_DLM}"
+  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER_DLM}" -p "${PLANS}"
   touch "${CKPT_DIR}/03_train_dlm.done"
 fi
 if [ ! -f "${CKPT_DIR}/03_pred_dlm.done" ]; then
   echo "[Phase 3] predict ${TRAINER_DLM}"
   nnUNetv2_predict -i "${IN_DIR}" -o "${PRED_BASE}/DA5DiseaseLandmark" \
-      -d "${DATASET_ID}" -c "${FULLRES}" -f "${FOLD}" -tr "${TRAINER_DLM}"
+      -d "${DATASET_ID}" -c "${FULLRES}" -f "${FOLD}" -tr "${TRAINER_DLM}" -p "${PLANS}"
   touch "${CKPT_DIR}/03_pred_dlm.done"
 fi
 
