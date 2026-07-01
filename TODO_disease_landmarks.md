@@ -20,6 +20,7 @@ sbatch scripts/CHD_Dataset050_disease_landmarks.sh
 Phases inside the script:
 - **0** build `Dataset050_imageCHD_DiseaseLandmarks` from Dataset030 (source read-only, images symlinked)
 - **1** `nnUNetv2_plan_and_preprocess -d 50 -pl nnUNetPlannerResEncM -c 3d_fullres --verify_dataset_integrity`
+- **1b** copy Dataset030 `splits_final.json` → Dataset050 (identical fold-0 train/val; test set is Dataset030/imagesTs, unchanged)
 - **2** train `nnUNetTrainerDA5_200epochs` (3d_fullres, fold 0) → predict test set → `predictions/DA5_baseline`
 - **3** train `nnUNetTrainerDA5DiseaseLandmark_200epochs` → predict → `predictions/DA5DiseaseLandmark`
 

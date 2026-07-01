@@ -97,6 +97,28 @@ else
 fi
 
 # ─────────────────────────────────────────────
+# Phase 1b — reuse Dataset030's train/val split (guarantee IDENTICAL folds)
+#   Dataset050 has the same case IDs as Dataset030, so copying splits_final.json
+#   makes fold 0 train/val exactly match Dataset030 (even if Dataset030 used a
+#   custom split rather than nnU-Net's default seeded one). Test set is separate
+#   (we predict on Dataset030/imagesTs), so it is identical regardless.
+# ─────────────────────────────────────────────
+if [ ! -f "${CKPT_DIR}/01b_splits.done" ]; then
+  SRC_SPLITS="${nnUNet_preprocessed}/${SOURCE_NAME}/splits_final.json"
+  DST_SPLITS="${nnUNet_preprocessed}/${DATASET_NAME}/splits_final.json"
+  if [ -f "${SRC_SPLITS}" ]; then
+    cp "${SRC_SPLITS}" "${DST_SPLITS}"
+    echo "[Phase 1b] copied Dataset030 splits_final.json -> ${DATASET_NAME} (identical folds)"
+  else
+    echo "[Phase 1b] WARNING: ${SRC_SPLITS} not found."
+    echo "           nnU-Net will auto-generate the split; because the case IDs match"
+    echo "           Dataset030 the default seeded split is identical, but copy the file"
+    echo "           manually if Dataset030 used a custom split."
+  fi
+  touch "${CKPT_DIR}/01b_splits.done"
+fi
+
+# ─────────────────────────────────────────────
 # Phase 2 — train DA5 baseline → predict
 # ─────────────────────────────────────────────
 if [ ! -f "${CKPT_DIR}/02_train_base.done" ]; then
