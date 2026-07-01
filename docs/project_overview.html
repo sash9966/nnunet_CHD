@@ -224,6 +224,7 @@
 <nav>
   <span class="brand">⬡ nnU-Net CHD</span>
   <a href="#overview">Overview</a>
+  <a href="#disease-landmarks" style="color:var(--accent);font-weight:600;">★ Disease Landmarks</a>
   <a href="#labels">Labels</a>
   <a href="#trainers">Trainers</a>
   <a href="#cascade">Cascade Ablation</a>
@@ -263,9 +264,23 @@
     <div class="dash-card yellow"><div class="num" id="results-filled">0</div><div class="label">Results Entered</div></div>
     <div class="dash-card red"><div class="num">8</div><div class="label">Open Questions</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">SLURM Scripts</div></div>
-    <div class="dash-card"><div class="num">6</div><div class="label">Datasets</div></div>
+    <div class="dash-card"><div class="num">7</div><div class="label">Datasets</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Cardiac Labels</div></div>
     <div class="dash-card"><div class="num">8</div><div class="label">Disease Flags</div></div>
+  </div>
+
+  <!-- ── LATEST CHANGE banner ── -->
+  <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
+    <div class="card-head">
+      <span class="badge badge-accent">★ Latest · 2026-07-01</span>
+      <h3 style="margin-left:10px;">Disease-Landmark System + Dataset031 + septal-defect evaluation</h3>
+    </div>
+    <p>New isolated <code>chd_landmarks/</code> package derives CHD disease landmarks from
+    ground-truth anatomy + diagnosis flags and builds a brand-new
+    <code>Dataset031_imageCHD_DiseaseLandmarks</code> (source read-only). Adds a unified
+    <strong>septal-defect</strong> label, the <code>nnUNetTrainerDA5DiseaseLandmark</code> trainer,
+    and a GT-derived-vs-prediction-derived septal-defect metric wired into the Alison
+    <code>dice_analysis.ipynb</code> (Step 10). <a href="#disease-landmarks">Jump to details →</a></p>
   </div>
 
   <!-- ── Current focus call-out ── -->
@@ -278,6 +293,69 @@
       Run: <code>sbatch scripts/CHD_Dataset041_mask_constrained.sh</code>.
     </p>
     <p style="margin-top:6px;color:var(--muted);">After Stage-2A: the plan is to sandwich SeqSeg (centerline tracing) with a disease-conditioned graph model (branch labelling). See the Stage-2 section and Review Findings for the full status.</p>
+  </div>
+</section>
+
+<!-- ── DISEASE LANDMARKS (latest change) ── -->
+<section id="disease-landmarks">
+  <div class="section-title"><span>★</span> Latest — Disease-Landmark System <span class="badge badge-accent">2026-07-01</span></div>
+
+  <div class="card" style="border-left:3px solid var(--accent);">
+    <div class="card-head"><span class="dot dot-purple"></span><h3>Why: Dice can't see the defect</h3></div>
+    <p>On a VSD case the LV/RV blood pools are ~100× the volume of the defect, so whole-heart Dice
+    is dominated by the chambers and is blind to whether the model got the <em>septal defect</em>
+    right — the clinically decisive region. The <code>chd_landmarks</code> package derives the
+    disease-relevant regions explicitly and measures them directly.</p>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <h3>What it builds</h3>
+      <ul style="font-size:13px; line-height:1.7;">
+        <li>Isolated <code>chd_landmarks/</code> package (13 modules) + 5 configs. Reads the source
+            dataset <strong>read-only</strong> (images symlinked); writes only the new
+            <code>Dataset031_imageCHD_DiseaseLandmarks</code>. Never calls <code>plan_and_preprocess</code>
+            on existing data.</li>
+        <li><strong>Unified septal-defect label</strong>: ASD/VSD/AVSD/ToF/DORV all share one
+            <code>septal_defect</code> class — a hole in a septal wall, found where blood pools touch
+            without an intervening septum (SDF4CHD-style). Conservative merge: confidence-gated,
+            overwrites only the chamber interface.</li>
+        <li>Per-septum proxies + a <strong>peri-defect blood-pool shell</strong> exported as
+            auxiliary masks for <em>evaluation only</em> (not embedded in training).</li>
+        <li>Trainer <code>nnUNetTrainerDA5DiseaseLandmark</code> — positive-supervision-only soft-Dice
+            on the septal label + AO∪PA clDice; network unchanged, self-disables without derived labels.</li>
+        <li>16 synthetic tests (no trainer import); label IDs resolved by name, never hardcoded.</li>
+      </ul>
+      <h3 style="margin-top:12px;">Build &amp; train (server)</h3>
+      <pre style="background:rgba(0,0,0,0.18); padding:10px; border-radius:6px; overflow:auto; font-size:12px;">bash scripts/build_dataset031_disease_landmarks.sh
+nnUNetv2_plan_and_preprocess -d 31 -pl nnUNetPlannerResEncM --verify_dataset_integrity
+nnUNetv2_train 31 3d_fullres 0                     # vanilla (septal = label 8)
+nnUNetv2_train 31 3d_fullres 0 \
+    -tr nnUNetTrainerDA5DiseaseLandmark_200epochs  # disease-aware</pre>
+    </div>
+    <div>
+      <h3>Evaluation — GT-derived vs prediction-derived</h3>
+      <p style="font-size:13px;">The existing predictions are plain 7-class anatomy (no septal label),
+      so we <strong>derive</strong> the septal defect from LV/RV (and LA/RA) touching on <em>both</em>
+      the ground truth (reference) and each prediction, then compare. Works on all existing
+      predictions with <strong>no retraining</strong>. Added as <strong>Step 10</strong> of the Alison
+      <code>dice_analysis.ipynb</code> via <code>scripts/septal_defect_eval.py</code>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>What it captures</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">septal_dice</td><td>Derived pred defect vs derived GT defect</td></tr>
+            <tr><td class="mono">detection recall / TP·FP·FN</td><td>Defect present &amp; overlapping?</td></tr>
+            <tr><td class="mono">centroid_err_mm</td><td>Defect localization error</td></tr>
+            <tr><td class="mono">peri_septal_dice</td><td>Blood-pool correctness in the peri-defect shell</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12px; color:var(--muted); margin-top:8px;">Already discriminative where Dice
+      isn't: <code>ct_1005</code> (VSD) scored <strong>septal Dice 0.0, 62&nbsp;mm centroid error</strong>
+      (a missed defect) with healthy whole-heart Dice, while <code>ct_1008</code> (DORV+VSD) scored
+      0.59 at 0.8&nbsp;mm. Full guide: <code>docs/chd_disease_landmark_nnunet.md</code>.</p>
+    </div>
   </div>
 </section>
 
