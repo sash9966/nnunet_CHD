@@ -121,6 +121,7 @@ def cmd_build_dataset(args) -> int:
         copy_images=args.copy,
         overwrite=args.overwrite,
         limit=args.limit,
+        require_myo=args.require_myo,
     )
 
 
@@ -211,6 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--copy", action="store_true", help="Copy images instead of symlinking.")
     sp.add_argument("--overwrite", action="store_true")
     sp.add_argument("--limit", type=int, default=None, help="Process only first N cases (debug).")
+    sp.add_argument("--require-myo", action="store_true",
+                    help="Exclude training cases with no myocardium label (logged to out_of_scope/missing_myo/).")
     add_cfg(sp)
     sp.set_defaults(func=cmd_build_dataset)
 

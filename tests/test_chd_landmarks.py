@@ -303,6 +303,21 @@ def test_topology_helpers():
     assert geo.volume_mm3(a, SPACING) == float((a > 0).sum())
 
 
+
+def test_soft_tversky_binary():
+    import torch
+    from nnunetv2.training.loss.septal_losses import soft_tversky_binary, resolve_septal_label_id
+    gt = torch.zeros(1, 1, 8, 8, 8); gt[0, 0, 3:5, 3:5, 3:5] = 1
+    assert float(soft_tversky_binary(gt.clone(), gt)) < 1e-3          # perfect -> ~0
+    assert float(soft_tversky_binary(torch.zeros_like(gt), gt)) > 0.9  # miss -> ~1
+    # FN penalised more than FP at EQUAL error magnitude (beta>alpha).
+    # gt = 8 voxels. fn: drop 4 (FN=4, FP=0). fp: add 4 (FP=4, FN=0).
+    fn = gt.clone(); fn[0, 0, 3, 3:5, 3:5] = 0          # remove 4 voxels -> FN=4
+    fp = gt.clone(); fp[0, 0, 5, 3:5, 3:5] = 1          # add 4 voxels    -> FP=4
+    assert float(soft_tversky_binary(fn, gt)) > float(soft_tversky_binary(fp, gt))
+    assert resolve_septal_label_id({"labels": {"background":0,"LV":1,"septal_defect_proxy":8}}) == 8
+
+
 # ---------------------------------------------------------------------------
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]

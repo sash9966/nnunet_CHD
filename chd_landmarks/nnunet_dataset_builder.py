@@ -76,6 +76,7 @@ def build_dataset(
     overwrite: bool = False,
     id_prefix: str = "ct_",
     limit: Optional[int] = None,
+    require_myo: bool = False,
 ) -> int:
     src_root = io.resolve_dataset_dir(source_dataset, raw_root)
     expected_prefix = f"Dataset{target_dataset_id:03d}_"
@@ -135,17 +136,31 @@ def build_dataset(
     report_rows: List[dict] = []
     full_report: Dict[str, dict] = {}
     n_matched = 0  # cases whose id matched a metadata row
+    myo_id = label_map.id_of("myocardium")
+    excluded_missing_myo: List[str] = []
+    included_case_ids: List[str] = []
 
     for lf in label_files:
         case_id = io.case_id_from_label_file(lf.name, file_ending)   # keeps _image (file naming)
         meta_key = normalize_case_key(case_id)                        # bare id for flag lookup
         meta = meta_all.get(meta_key, CaseMetadata(case_id=meta_key, flags={}))
+
+        lab = io.read_label(lf)
+
+        # Missing-myocardium cases are excluded from TRAINING: the septal/outflow
+        # derivation relies on myocardium, and a myo-less case teaches the model
+        # "no myo here". Excluded cases are logged (they stay valid TEST cases via
+        # imagesTs, evaluated with a human in the loop).
+        if require_myo and myo_id is not None and not (lab.data == myo_id).any():
+            excluded_missing_myo.append(case_id)
+            io.warn(f"{case_id}: no myocardium (label {myo_id}) -> EXCLUDED from training (--require-myo)")
+            continue
+
         if meta_key in meta_all:
             n_matched += 1
         else:
             io.warn(f"{case_id} (key '{meta_key}'): no metadata row found -> treated as no-disease")
-
-        lab = io.read_label(lf)
+        included_case_ids.append(case_id)
         derivation = builder.build_for_case(
             lab.data, meta, case_id, affine=lab.affine, spacing=lab.spacing)
 
@@ -208,9 +223,19 @@ def build_dataset(
             f"No disease labels would be derived, so the build is aborted.")
     print(f"  matched metadata for {n_matched}/{len(label_files)} cases")
 
+    # --- exclusion logs (seed for splits filtering + test-only handling) ---
+    if excluded_missing_myo:
+        oos = dst_root / "out_of_scope" / "missing_myo"
+        oos.mkdir(parents=True, exist_ok=True)
+        (oos / "excluded_case_ids.txt").write_text("\n".join(excluded_missing_myo) + "\n")
+        print(f"  EXCLUDED (missing myocardium, --require-myo): {len(excluded_missing_myo)} "
+              f"-> {oos/'excluded_case_ids.txt'}")
+    io.save_json({"included": included_case_ids, "excluded_missing_myo": excluded_missing_myo},
+                 dst_root / "included_cases.json")
+
     # --- dataset.json ---------------------------------------------------
     _write_dataset_json(dst_root, channel_names, builder.merged_dataset_labels(),
-                        len(label_files), file_ending, target_folder, source_dataset)
+                        len(included_case_ids), file_ending, target_folder, source_dataset)
 
     # --- reports --------------------------------------------------------
     io.save_json(full_report, dst_root / "chd_derivation_report.json")

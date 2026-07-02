@@ -269,7 +269,12 @@ def build_septal_defect(seg, label_map: LabelMap, spacing, affine, disease_flags
         keep = {int(i) + 1 for i in np.where(sizes >= min_vox)[0]}
         union = np.isin(lbl, list(keep)) if keep else union
 
-    conf = "high" if "VSD_LV_RV" in parts else "medium"
+    # A septal_defect is one label (id 8) that can stem from VSD (LV-RV), ASD
+    # (LA-RA), or AVSD (cross) — ALL are real defects and must be merged. The
+    # derivation is already flag-gated, so any present component is a genuine
+    # defect region; confidence is "high" whenever a component exists. (The old
+    # "high only if LV-RV present" wrongly dropped pure-ASD cases from labelsTr.)
+    conf = "high" if parts else "none"
     return _region("septal_defect_proxy", union, spacing, affine, conf,
                    "septal-wall defect (v2): " + "+".join(sorted(parts.keys())),
                    extra={"components": {k: int(v.sum()) for k, v in parts.items()},

@@ -22,6 +22,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `region_scaffold.py` | `RegionScaffoldMixin` | Hierarchical region supervision (whole-heart/blood-pool/chambers/ventricles/atria/great-vessels/myocardium) on soft probs; stepwise λ 0.3→0.15→0.05; network unchanged |
 | `vessel_topo.py` | `VesselFocusedTopologyMixin` | Binary great-vessel (AO∪PA) soft-clDice as one connected structure; warmup 50→150, cap 0.15; network unchanged |
 | `centerline_aux.py` | `CenterlineAuxMixin` | Centerline-weighted CE on AO/PA (weight = 1+α·skeleton from GT, detached); on-the-fly soft skeleton; network unchanged |
+| `septal_focus.py` | `SeptalOversampleMixin` / `SeptalTverskyMixin` | Septal-defect ablation levers: bias fg patch sampling to the septal class (via `overwrite_class`), and FN-weighted Tversky on the septal class. Individually toggleable for ablation. |
 | `disease_landmark.py` | `DiseaseLandmarkMixin` | For `Dataset050_imageCHD_DiseaseLandmarks`: soft-Dice on derived hard labels (vsd/asd_orifice_proxy, resolved by name) with **positive-supervision only** (unverified absence never penalised) + optional great-vessel (AO∪PA) clDice; λ_disease 0.3, λ_vessel_cldice 0.1; self-disables if no derived labels; network unchanged |
 
 Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.py` (`SoftRegionScaffoldLoss`, `BinaryVesselClDiceLoss`, `CenterlineWeightedCELoss`, `resolve_chd_label_ids`, `build_region_groups`) — unit-tested by `nnunetv2/tests/test_anatomy_losses.py` without importing a trainer.
@@ -34,7 +35,7 @@ Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.
 
 ## 2. Composed Trainer Inventory (`nnunetv2/training/nnUNetTrainer/variants/composed/`)
 
-**Total classes: 97** (all include `_100epochs` and `_200epochs` variants at minimum)
+**Total classes: 103** (all include `_100epochs` and `_200epochs` variants at minimum)
 
 ### DA5 Baseline (no extras)
 - `nnUNetTrainerDA5_200epochs`, `_100epochs` — in `nnUNetTrainerDA5_epochs.py`
@@ -114,6 +115,7 @@ Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.
 | Class | File | Idea |
 |---|---|---|
 | `nnUNetTrainerDA5DiseaseLandmark` + `_100e/_200e/_500e` | `nnUNetTrainerDA5DiseaseLandmark.py` | Soft-Dice on derived disease-proxy labels (positive-supervision only) + great-vessel clDice; pairs with the `chd_landmarks` package (see §9) |
+| `nnUNetTrainerDA5Septal{Oversample,Tversky,OversampleTversky}` + `_200e` | `nnUNetTrainerDA5SeptalAblation.py` | Septal-defect ablation arms (Dataset051): oversampling lever, FN-weighted Tversky lever, and combined. Reference = `nnUNetTrainerDA5`. |
 
 ### Other
 - `nnUNetTrainerDA5Gated` + `_100e/_200e` — Spatially-gated disease conditioning (GatedConditionedResEncUNet)
@@ -252,7 +254,7 @@ Simply resubmit the same script: `sbatch scripts/CHD_Dataset030_imageCHD.sh`
 | `nnunetv2/architectures/gated_conditioned_unet.py` | `GatedConditionedResEncUNet` |
 | `nnunetv2/inference/predict_disease_conditioned.py` | Inference entry point for FiLM/Gated models |
 | `nnunetv2/training/nnUNetTrainer/variants/mixins/` | All mixin implementations |
-| `nnunetv2/training/nnUNetTrainer/variants/composed/` | All composed trainer classes (97 total) |
+| `nnunetv2/training/nnUNetTrainer/variants/composed/` | All composed trainer classes (103 total) |
 | `docs/project_overview.html` | Interactive HTML dashboard |
 | `docs/FEATURES.md` | **This file** — authoritative feature reference |
 | `docs/CHD_TopologyLoss_Presentation.pptx` | Project presentation |
