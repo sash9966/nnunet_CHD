@@ -194,6 +194,88 @@ def build_peri_defect_roi(defect_mask, seg, chamber_ids, spacing, affine,
                    extra={"shell_mm": dilation_mm, "chamber_ids": ids})
 
 
+def _direct_touch(seg: np.ndarray, id_a: int, id_b: int) -> np.ndarray:
+    """1-voxel direct adjacency between two labels (a true through-connection,
+    not a thin-septum bridge). Used for the atrial / AV-cross pairs where no
+    myocardial wall is labelled to subtract."""
+    a, b = seg == id_a, seg == id_b
+    if not a.any() or not b.any():
+        return np.zeros(seg.shape, dtype=bool)
+    struct = ndi.generate_binary_structure(seg.ndim, 1)
+    return (ndi.binary_dilation(a, struct) & b) | (ndi.binary_dilation(b, struct) & a)
+
+
+def _touch_minus_myo(seg: np.ndarray, id_a: int, id_b: int, myo_id, spacing,
+                     dilation_mm: float) -> np.ndarray:
+    """Contact band between two labels with the myocardial septum removed —
+    localises a *hole* in a labelled wall (the ventricular-septum case)."""
+    band = topo.contact_surface(seg == id_a, seg == id_b, spacing, dilation_mm)
+    if myo_id is not None and (seg == myo_id).any():
+        band = band & ~ndi.binary_dilation(seg == myo_id)
+    return band
+
+
+def build_septal_defect(seg, label_map: LabelMap, spacing, affine, disease_flags,
+                        params) -> DerivedRegion:
+    """Unified septal-wall defect (v2) — one label from all abnormal chamber
+    connections, each flag-gated. ASD/VSD/AVSD are the *same lesion class*
+    (a hole in a septal wall), so their contacts are unioned:
+
+      * VSD  (LV-RV): contact minus myocardium -> a localised ventricular hole.
+      * ASD  (LA-RA): tight direct adjacency (no labelled atrial septum to
+                       subtract, so this is the atrial-septal interface, coarser).
+      * AVSD (LV-RA, RV-LA): tight direct adjacency for the cross connections —
+                       added when AVSD is flagged OR when VSD *and* ASD co-occur
+                       (which forms a continuous atrioventricular defect).
+
+    Normal AV valve planes (LV-LA mitral, RV-RA tricuspid) are never included.
+    """
+    flags = set(disease_flags)
+    lm = label_map
+    dil = float(params.get("interface_dilation_mm", 2.0))
+    min_vox = int(params.get("min_component_voxels", 10))
+    myo_id = lm.id_of("myocardium")
+    avsd_like = ("AVSD" in flags) or ({"VSD", "ASD"} <= flags)
+
+    parts: Dict[str, np.ndarray] = {}
+    if ({"VSD", "ToF", "DORV", "AVSD"} & flags) and lm.require(["lv", "rv"]):
+        m = _touch_minus_myo(seg, lm.id_of("lv"), lm.id_of("rv"), myo_id, spacing, dil)
+        if m.any():
+            parts["VSD_LV_RV"] = m
+    if ({"ASD", "AVSD"} & flags) and lm.require(["la", "ra"]):
+        m = _direct_touch(seg, lm.id_of("la"), lm.id_of("ra"))
+        if m.any():
+            parts["ASD_LA_RA"] = m
+    if avsd_like:
+        if lm.require(["lv", "ra"]):
+            m = _direct_touch(seg, lm.id_of("lv"), lm.id_of("ra"))
+            if m.any():
+                parts["AVSD_LV_RA"] = m
+        if lm.require(["rv", "la"]):
+            m = _direct_touch(seg, lm.id_of("rv"), lm.id_of("la"))
+            if m.any():
+                parts["AVSD_RV_LA"] = m
+
+    if not parts:
+        return _empty("septal_defect_proxy", seg.shape, "no derivable septal-wall connection")
+
+    union = np.zeros(seg.shape, dtype=bool)
+    for m in parts.values():
+        union |= m
+    # drop tiny specks
+    lbl, n = ndi.label(union, structure=ndi.generate_binary_structure(seg.ndim, 1))
+    if n > 1 and min_vox > 1:
+        sizes = ndi.sum(np.ones_like(lbl), lbl, index=np.arange(1, n + 1))
+        keep = {int(i) + 1 for i in np.where(sizes >= min_vox)[0]}
+        union = np.isin(lbl, list(keep)) if keep else union
+
+    conf = "high" if "VSD_LV_RV" in parts else "medium"
+    return _region("septal_defect_proxy", union, spacing, affine, conf,
+                   "septal-wall defect (v2): " + "+".join(sorted(parts.keys())),
+                   extra={"components": {k: int(v.sum()) for k, v in parts.items()},
+                          "avsd_like": bool(avsd_like)})
+
+
 def build_septal_defect_proxy(vsd_region, asd_region, seg, spacing, affine) -> DerivedRegion:
     """Unify the ventricular (VSD) and atrial (ASD) septal-gap proxies into ONE
     'septal defect' label — they are the same kind of lesion (a hole in a septal

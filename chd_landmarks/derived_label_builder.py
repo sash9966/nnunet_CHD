@@ -108,10 +108,9 @@ class DerivedLabelBuilder:
         add(dr.build_aorta_pulmonary_connection_candidate(seg, lm, spacing, affine, diseases, p))
         add(dr.build_hypoplastic_structure_preservation_roi(seg, lm, spacing, affine, diseases, p))
 
-        # unified septal-defect hard label (VSD ∪ ASD — same kind of lesion)
-        septal = dr.build_septal_defect_proxy(
-            regions.get("vsd_orifice_proxy"), regions.get("asd_orifice_proxy"),
-            seg, spacing, affine)
+        # unified septal-defect hard label (v2): all abnormal chamber connections
+        # (VSD LV-RV + ASD LA-RA + AVSD cross LV-RA/RV-LA), flag-gated, unioned.
+        septal = dr.build_septal_defect(seg, lm, spacing, affine, diseases, p)
         regions["septal_defect_proxy"] = septal
 
         # peri-septal blood-pool shell (EVALUATION ROI, never merged)

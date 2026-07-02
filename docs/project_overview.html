@@ -272,15 +272,19 @@
   <!-- ── LATEST CHANGE banner ── -->
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
-      <span class="badge badge-accent">★ Latest · 2026-07-01</span>
-      <h3 style="margin-left:10px;">Disease-Landmark System + Dataset050 + septal-defect evaluation</h3>
+      <span class="badge badge-accent">★ Latest · 2026-07-02</span>
+      <h3 style="margin-left:10px;">Septal-defect label v2 (AVSD fix) — Dataset050 (v1) vs Dataset051 (v2) A/B</h3>
     </div>
-    <p>New isolated <code>chd_landmarks/</code> package derives CHD disease landmarks from
-    ground-truth anatomy + diagnosis flags and builds a brand-new
-    <code>Dataset050_imageCHD_DiseaseLandmarks</code> (source read-only). Adds a unified
-    <strong>septal-defect</strong> label, the <code>nnUNetTrainerDA5DiseaseLandmark</code> trainer,
-    and a GT-derived-vs-prediction-derived septal-defect metric wired into the Alison
-    <code>dice_analysis.ipynb</code> (Step 10). <a href="#disease-landmarks">Jump to details →</a></p>
+    <p>The <code>chd_landmarks/</code> package derives CHD disease landmarks from GT anatomy +
+    diagnosis flags and builds a unified <strong>septal-defect</strong> label (id 8).
+    <strong>v2 derivation</strong> fixes an AVSD bug: v1 only checked LV–RV &amp; LA–RA and split
+    AVSD into disconnected blobs; v2 adds the AV-cross connections (LV–RA, RV–LA) and unions all
+    flag-gated contacts (VSD = LV–RV minus myocardium; ASD/AVSD = tight direct adjacency, since the
+    atrial septum isn't labelled). Two datasets for comparison:
+    <code>Dataset050</code> (v1, tag <code>septal-v1-dataset050</code>) and
+    <code>Dataset051</code> (v2, tag <code>septal-v2-dataset051</code>). Run scripts:
+    <code>scripts/CHD_Dataset05{0,1}_disease_landmarks.sh</code>. Septal-defect eval is Step 10 of the
+    Alison <code>dice_analysis.ipynb</code>. <a href="#disease-landmarks">Jump to details →</a></p>
   </div>
 
   <!-- ── Current focus call-out ── -->
