@@ -197,12 +197,20 @@ def build_peri_defect_roi(defect_mask, seg, chamber_ids, spacing, affine,
 def _direct_touch(seg: np.ndarray, id_a: int, id_b: int) -> np.ndarray:
     """1-voxel direct adjacency between two labels (a true through-connection,
     not a thin-septum bridge). Used for the atrial / AV-cross pairs where no
-    myocardial wall is labelled to subtract."""
+    myocardial wall is labelled to subtract. Computed on the two labels'
+    combined bounding box so cost scales with the region, not the full volume."""
     a, b = seg == id_a, seg == id_b
     if not a.any() or not b.any():
         return np.zeros(seg.shape, dtype=bool)
+    coords = np.array(np.nonzero(a | b))
+    mn = np.maximum(coords.min(1) - 2, 0)
+    mx = np.minimum(coords.max(1) + 1 + 2, seg.shape)
+    sl = tuple(slice(int(x), int(y)) for x, y in zip(mn, mx))
+    ac, bc = a[sl], b[sl]
     struct = ndi.generate_binary_structure(seg.ndim, 1)
-    return (ndi.binary_dilation(a, struct) & b) | (ndi.binary_dilation(b, struct) & a)
+    out = np.zeros(seg.shape, dtype=bool)
+    out[sl] = (ndi.binary_dilation(ac, struct) & bc) | (ndi.binary_dilation(bc, struct) & ac)
+    return out
 
 
 def _touch_minus_myo(seg: np.ndarray, id_a: int, id_b: int, myo_id, spacing,
@@ -279,6 +287,96 @@ def build_septal_defect(seg, label_map: LabelMap, spacing, affine, disease_flags
                    "septal-wall defect (v2): " + "+".join(sorted(parts.keys())),
                    extra={"components": {k: int(v.sum()) for k, v in parts.items()},
                           "avsd_like": bool(avsd_like)})
+
+
+def build_septal_defect_anchored(seg, label_map: LabelMap, spacing, affine, disease_flags,
+                                 params) -> DerivedRegion:
+    """v3 septal defect — VSD-ANCHORED (the 'purest' derivation).
+
+    1. VSD anchor = LV-RV contact minus myocardium (raw band if no myo, e.g. a
+       missing-myo test case — degraded, for visual inspection only).
+    2. ASD (LA-RA) + AVSD cross (LV-RA, RV-LA) are candidate contacts.
+    3. If a VSD anchor exists, KEEP atrial/cross voxels ONLY where they are
+       continuous with the VSD (within ``septal_link_mm``); drop atrial contacts
+       that float off the septum (atria wrapping around). Single-hole assumption.
+    4. Pure-ASD (no VSD anchor): keep the LA-RA contact as-is (best effort; the
+       atrial septum is unlabeled, so this tier is approximate).
+
+    No myocardium hole-filling, no myo-proximity filter — works with data as-is.
+    """
+    flags = set(disease_flags)
+    lm = label_map
+    dil = float(params.get("interface_dilation_mm", 2.0))
+    link_mm = float(params.get("septal_link_mm", 5.0))
+    min_vox = int(params.get("min_component_voxels", 10))
+    myo_id = lm.id_of("myocardium")
+    avsd_like = ("AVSD" in flags) or ({"VSD", "ASD"} <= flags)
+    st = ndi.generate_binary_structure(seg.ndim, 3)
+
+    # 1) VSD anchor
+    vsd = np.zeros(seg.shape, dtype=bool)
+    if ({"VSD", "ToF", "DORV", "AVSD"} & flags) and lm.require(["lv", "rv"]):
+        band = topo.contact_surface(seg == lm.id_of("lv"), seg == lm.id_of("rv"), spacing, dil)
+        if myo_id is not None and (seg == myo_id).any():
+            band = band & ~ndi.binary_dilation(seg == myo_id)
+        vsd = band
+
+    # 2) atrial + cross candidates
+    atrial = np.zeros(seg.shape, dtype=bool)
+    if ({"ASD", "AVSD"} & flags) and lm.require(["la", "ra"]):
+        atrial |= _direct_touch(seg, lm.id_of("la"), lm.id_of("ra"))
+    if avsd_like:
+        if lm.require(["lv", "ra"]):
+            atrial |= _direct_touch(seg, lm.id_of("lv"), lm.id_of("ra"))
+        if lm.require(["rv", "la"]):
+            atrial |= _direct_touch(seg, lm.id_of("rv"), lm.id_of("la"))
+
+    parts: Dict[str, np.ndarray] = {}
+    if vsd.any():
+        parts["VSD_LV_RV"] = vsd
+        if atrial.any():
+            # 3) keep atrial voxels continuous with the VSD (within link_mm).
+            # Operate on the union's bounding box (+margin) so the dilation/label
+            # cost scales with the septal region, not the full volume.
+            iters = max(1, int(round(link_mm / max(min(spacing), 1e-6))))
+            union0 = vsd | atrial
+            coords = np.array(np.nonzero(union0))
+            m = iters + 2
+            mn = np.maximum(coords.min(1) - m, 0)
+            mx = np.minimum(coords.max(1) + 1 + m, seg.shape)
+            sl = tuple(slice(int(a), int(b)) for a, b in zip(mn, mx))
+            grown = ndi.binary_dilation(union0[sl], st, iterations=iters)
+            lbl, _ = ndi.label(grown, structure=st)
+            keep = set(np.unique(lbl[vsd[sl]])) - {0}
+            comp = np.isin(lbl, list(keep))
+            atrial_kept = np.zeros_like(atrial)
+            atrial_kept[sl] = atrial[sl] & comp
+            if atrial_kept.any():
+                parts["ASD_AVSD_anchored"] = atrial_kept
+    elif atrial.any():
+        # 4) pure-ASD, no anchor -> best effort as-is
+        parts["ASD_LA_RA"] = atrial
+
+    if not parts:
+        return _empty("septal_defect_proxy", seg.shape, "no derivable septal defect (anchored)")
+
+    union = np.zeros(seg.shape, dtype=bool)
+    for m in parts.values():
+        union |= m
+    lbl, n = ndi.label(union, structure=ndi.generate_binary_structure(seg.ndim, 1))
+    if n > 1 and min_vox > 1:
+        sizes = ndi.sum(np.ones_like(lbl), lbl, index=np.arange(1, n + 1))
+        keep = {int(i) + 1 for i in np.where(sizes >= min_vox)[0]}
+        union = np.isin(lbl, list(keep)) if keep else union
+
+    myo_ok = myo_id is not None and (seg == myo_id).any()
+    # Always merge a derived defect (so missing-myo test cases still get label 8
+    # to INSPECT). Quality is flagged via `myocardium_present`, not by dropping.
+    return _region("septal_defect_proxy", union, spacing, affine, "high",
+                   "septal-wall defect (v3, VSD-anchored): " + "+".join(sorted(parts.keys()))
+                   + ("" if myo_ok else " [NO MYOCARDIUM — degraded, inspect]"),
+                   extra={"components": {k: int(v.sum()) for k, v in parts.items()},
+                          "myocardium_present": bool(myo_ok), "avsd_like": bool(avsd_like)})
 
 
 def build_septal_defect_proxy(vsd_region, asd_region, seg, spacing, affine) -> DerivedRegion:

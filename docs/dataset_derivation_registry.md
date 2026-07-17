@@ -1,0 +1,32 @@
+# Dataset derivation registry (septal-defect work)
+
+How each derived dataset was created — the septal-defect derivation version, the
+train/test partition, and the build entry point. Keep this current when a new
+derivation dataset is added.
+
+Source for all: `Dataset030_imageCHD_HU` (read-only). Labels 1=LV 2=RV 3=LA 4=RA
+5=Myo 6=AO 7=PA; derived `septal_defect` = id 8.
+
+| Dataset | septal derivation | myocardium in train | test set | septal on test labels? | build entry point | git tag |
+|---|---|---|---|---|---|---|
+| **050** | **v1** — LV-RV + LA-RA union, **no AVSD cross**; merges only if a ventricular component is high-confidence (pure-ASD dropped) | mixed (missing-myo NOT excluded) | Dataset030 standard split | no (predict on Dataset030 imagesTs) | `chd_landmarks.cli build-dataset` @ v1 code | `septal-v1-dataset050` |
+| **051** | **v2** — union of VSD (LV-RV − myo) + ASD (LA-RA direct) + AVSD cross (LV-RA/RV-LA direct); ASD-merge FIX (any component → label 8) | `--require-myo` excludes missing-myo from train | Dataset030 standard split (filtered) | no | `scripts/CHD_Dataset051_septal_ablation.sh` | `septal-v2-dataset051` |
+| **060** | **v2** (union) | clean only (missing-myo → test) | **NEW partition**: missing-myo cases (+stratified topup ~10%) | no (anatomy-only labelsTs) | `tools/build_dataset060_clean_holdout.py` / `scripts/CHD_Dataset060_clean_holdout.sh` | — |
+| **062** | **v3 — VSD-ANCHORED**: VSD (LV-RV − myo) is the anchor; ASD/AVSD-cross kept only where **continuous with the VSD** (within `septal_link_mm`≈5mm), off-septum atrial contacts dropped; pure-ASD (no anchor) kept best-effort as-is. No myo hole-filling. | clean only (missing-myo → test) | **NEW partition**: missing-myo (+stratified topup ~10%) | **YES** — septal derived on test too (degraded/low-conf for missing-myo; for visual inspection) | `tools/build_dataset062_vsd_anchored.py` / `scripts/CHD_Dataset062_vsd_anchored.sh` | — |
+
+## Derivation code
+- v1: `chd_landmarks.derived_regions.build_septal_defect_proxy`
+- v2: `chd_landmarks.derived_regions.build_septal_defect`
+- v3: `chd_landmarks.derived_regions.build_septal_defect_anchored`
+- Selected via `DerivedLabelBuilder(..., septal_mode="v2"|"anchored")`.
+
+## Reliability tiers (of the derived septal GT)
+- **VSD-bearing (50/110)** — solid (interventricular septum is myocardium).
+- **AVSD-like = VSD+ASD (12/110)** — solid, VSD-anchored + continuity.
+- **pure-ASD (18/110)** — approximate (atrial septum unlabeled, no anchor); v3 keeps it best-effort.
+- **missing-myo** — degraded; excluded from train everywhere from 051 on; in 062 kept in test for inspection only.
+
+## Planned / not yet built
+- **Clinician dataset** — clean anatomy only (7 labels, NO septal label), all-myo, reoriented +
+  respaced to the clinical acquisition (deployment domain). Deferred (orientation/spacing debug
+  is a separate step). This is the "train and send to clinic" model.

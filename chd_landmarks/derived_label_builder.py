@@ -51,10 +51,12 @@ class CaseDerivation:
 
 
 class DerivedLabelBuilder:
-    def __init__(self, label_map: LabelMap, ruleset: RuleSet, derived_cfg: dict):
+    def __init__(self, label_map: LabelMap, ruleset: RuleSet, derived_cfg: dict,
+                 septal_mode: str = "v2"):
         self.label_map = label_map
         self.ruleset = ruleset
         self.cfg = derived_cfg
+        self.septal_mode = septal_mode   # "v2" (union) or "anchored" (v3, VSD-anchored)
         self.params = derived_cfg.get("construction_params", {})
         self.hard_cfg: Dict[str, dict] = derived_cfg.get("hard_integer_labels", {}) or {}
         self.aux_names: List[str] = list(derived_cfg.get("auxiliary_masks", []) or [])
@@ -108,9 +110,12 @@ class DerivedLabelBuilder:
         add(dr.build_aorta_pulmonary_connection_candidate(seg, lm, spacing, affine, diseases, p))
         add(dr.build_hypoplastic_structure_preservation_roi(seg, lm, spacing, affine, diseases, p))
 
-        # unified septal-defect hard label (v2): all abnormal chamber connections
-        # (VSD LV-RV + ASD LA-RA + AVSD cross LV-RA/RV-LA), flag-gated, unioned.
-        septal = dr.build_septal_defect(seg, lm, spacing, affine, diseases, p)
+        # unified septal-defect hard label. v2 = union of all abnormal contacts;
+        # "anchored" (v3) = VSD-anchored + atrial continuity (drops off-septum atria).
+        if self.septal_mode == "anchored":
+            septal = dr.build_septal_defect_anchored(seg, lm, spacing, affine, diseases, p)
+        else:
+            septal = dr.build_septal_defect(seg, lm, spacing, affine, diseases, p)
         regions["septal_defect_proxy"] = septal
 
         # peri-septal blood-pool shell (EVALUATION ROI, never merged)
