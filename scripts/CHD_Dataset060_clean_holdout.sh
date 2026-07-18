@@ -41,7 +41,7 @@ SOURCE_NAME="Dataset030_imageCHD_HU"
 DATASET_ID=60
 DATASET_NAME="Dataset060_imageCHD_CleanHoldout"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"; FOLD=0
-METADATA="${REPO}/imageCHD_dataset_info.xlsx"
+METADATA="${REPO}/imageCHD_diagnosis_june21.csv"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"     # Dataset060's OWN held-out set
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/clean_holdout"

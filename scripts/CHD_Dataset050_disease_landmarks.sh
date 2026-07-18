@@ -14,7 +14,7 @@
 #          nnU-Net auto-resumes interrupted training from checkpoint_latest.pth.
 #
 #  Prereqs: git pull (this file + the chd_landmarks package), env below set.
-#           The diagnosis xlsx ships in the repo ($REPO/imageCHD_dataset_info.xlsx).
+#           The diagnosis xlsx ships in the repo ($REPO/imageCHD_diagnosis_june21.csv).
 # =============================================================================
 #SBATCH --job-name=D050-landmarks
 #SBATCH --partition=bioe
@@ -57,7 +57,7 @@ PLANNER="nnUNetPlannerResEncM"
 PLANS="nnUNetResEncUNetMPlans"     # plans identifier the ResEncM planner writes (pass to train/predict via -p)
 FULLRES="3d_fullres"
 FOLD=0
-METADATA="${REPO}/imageCHD_dataset_info.xlsx"      # shipped in repo
+METADATA="${REPO}/imageCHD_diagnosis_june21.csv"      # shipped in repo
 
 TRAINER_BASE="nnUNetTrainerDA5_200epochs"
 TRAINER_DLM="nnUNetTrainerDA5DiseaseLandmark_200epochs"

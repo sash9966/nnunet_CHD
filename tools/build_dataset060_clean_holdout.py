@@ -24,7 +24,7 @@ Usage (on the cluster, where all labels exist):
   python tools/build_dataset060_clean_holdout.py \
     --source-dataset $nnUNet_raw/Dataset030_imageCHD_HU \
     --target-id 60 --target-name imageCHD_CleanHoldout \
-    --metadata $REPO/imageCHD_dataset_info.xlsx --out-root $nnUNet_raw
+    --metadata $REPO/imageCHD_diagnosis_june21.csv --out-root $nnUNet_raw
 """
 from __future__ import annotations
 

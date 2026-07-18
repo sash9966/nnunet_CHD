@@ -43,7 +43,7 @@ SOURCE_NAME="Dataset030_imageCHD_HU"
 DATASET_ID=51
 DATASET_NAME="Dataset051_imageCHD_DiseaseLandmarksV2"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"; FOLD=0
-METADATA="${REPO}/imageCHD_dataset_info.xlsx"
+METADATA="${REPO}/imageCHD_diagnosis_june21.csv"
 IN_DIR="${nnUNet_raw}/${SOURCE_NAME}/imagesTs"
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/septal_ablation"
