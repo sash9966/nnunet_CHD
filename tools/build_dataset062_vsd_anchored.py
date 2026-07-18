@@ -21,7 +21,7 @@ Usage (cluster):
   python tools/build_dataset062_vsd_anchored.py \
     --source-dataset $nnUNet_raw/Dataset030_imageCHD_HU \
     --target-id 62 --target-name imageCHD_VSDanchored \
-    --metadata $REPO/imageCHD_diagnosis_june21.csv --out-root $nnUNet_raw
+    --metadata $REPO/imageCHD_dataset_info.xlsx --out-root $nnUNet_raw
 """
 from __future__ import annotations
 

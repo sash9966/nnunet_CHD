@@ -40,7 +40,7 @@ SOURCE_NAME="Dataset030_imageCHD_HU"
 DATASET_ID=62
 DATASET_NAME="Dataset062_imageCHD_VSDanchored"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"; FOLD=0
-METADATA="${REPO}/imageCHD_diagnosis_june21.csv"
+METADATA="${REPO}/imageCHD_dataset_info.xlsx"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
 PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/vsd_anchored"

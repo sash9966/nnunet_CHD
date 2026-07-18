@@ -6,7 +6,7 @@ disease-specific landmark / region labels, auxiliary masks for metrics &
 topology, and (optionally) a region-based or disease-aware training setup.
 
 > **Not a diagnostic tool.** This code does **not** diagnose CHD. It assumes
-> diagnosis flags are already provided (from `imageCHD_diagnosis_june21.csv`) and
+> diagnosis flags are already provided (from `imageCHD_dataset_info.xlsx`) and
 > uses them, with the GT anatomy, to *derive research labels/metrics*. It is
 > deliberately conservative: a landmark is produced only when both the flag and
 > the geometry support it — it never hallucinates disease labels.
@@ -93,14 +93,14 @@ This is written per-case to `case_metadata/<case>.json` and summarised in
 # inspect first — reports resolved labels + which diseases are derivable
 python -m chd_landmarks.cli inspect-dataset \
     --nnunet-raw $nnUNet_raw/Dataset030_imageCHD_HU \
-    --metadata  $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_diagnosis_june21.csv
+    --metadata  $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_dataset_info.xlsx
 
 # build a NEW dataset (source is read-only; images symlinked)
 python -m chd_landmarks.cli build-dataset \
     --source-dataset   $nnUNet_raw/Dataset030_imageCHD_HU \
     --target-dataset-id 050 \
     --target-dataset-name imageCHD_DiseaseLandmarks \
-    --metadata         $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_diagnosis_june21.csv \
+    --metadata         $nnUNet_raw/Dataset030_imageCHD_HU/imageCHD_dataset_info.xlsx \
     --out-root         $nnUNet_raw
 ```
 
@@ -157,7 +157,7 @@ these later.
 python -m chd_landmarks.cli evaluate-disease-metrics \
     --pred  pred/ct_1012.nii.gz --gt gt/ct_1012.nii.gz \
     --derived-gt-dir $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks/derived_masksTr/ct_1012 \
-    --metadata imageCHD_diagnosis_june21.csv --case-id ct_1012 \
+    --metadata imageCHD_dataset_info.xlsx --case-id ct_1012 \
     --dataset-dir $nnUNet_raw/Dataset050_imageCHD_DiseaseLandmarks \
     --out metrics_ct_1012.json
 ```

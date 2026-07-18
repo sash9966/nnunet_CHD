@@ -1,16 +1,20 @@
 #!/bin/bash
 # =============================================================================
-#  CHD_Dataset063_vsd_anchored_fanwei.sh
-#  Dataset063 — septal_defect via the v3 VSD-ANCHORED derivation (the "purest").
+#  CHD_Dataset070_vsd_anchored_fanwei.sh
+#  Dataset070 — septal_defect via the v3 VSD-ANCHORED derivation (the "purest").
 #    TRAIN = all clean (myo-present) cases; septal_defect (id 8) derived reliably.
 #    TEST  = missing-myo cases (+stratified topup ~10%); septal ALSO derived
 #            (degraded, for visual inspection).
 #  No myo hole-filling; ImageCHD as-is. NEW partition (not 030/050/051).
 #
+#  DIAGNOSIS SOURCE = Fanwei's June-21 re-review (imageCHD_diagnosis_Fanwei_june21.csv):
+#  more/higher flags than Kaggle (VSD 69 vs 36, AVSD 10 vs 0) → septal label on more
+#  cases. This is the ONLY difference vs Dataset062, which uses the Kaggle sheet.
+#
 #  Phase 0 builds the dataset — you can stop after it and inspect labelsTr/labelsTs
 #  before training (the .done markers let you resubmit to continue).
 # =============================================================================
-#SBATCH --job-name=D063-vsd-anch-fanwei
+#SBATCH --job-name=D070-vsd-anch-fanwei
 #SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -20,8 +24,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
-#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D063-vsd-anch-fanwei_%j.out
-#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D063-vsd-anch-fanwei_%j.err
+#SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/D070-vsd-anch-fanwei_%j.out
+#SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/D070-vsd-anch-fanwei_%j.err
 
 set -euo pipefail
 module purge
@@ -37,8 +41,8 @@ export PYTHONUNBUFFERED=1
 
 REPO="/scratch/users/sastocke/nnunet_CHD"; cd "$REPO"
 SOURCE_NAME="Dataset030_imageCHD_HU"
-DATASET_ID=63
-DATASET_NAME="Dataset063_imageCHD_VSDanchored_Fanwei"
+DATASET_ID=70
+DATASET_NAME="Dataset070_imageCHD_VSDanchored_Fanwei"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"; FOLD=0
 METADATA="${REPO}/imageCHD_diagnosis_Fanwei_june21.csv"
 IN_DIR="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
@@ -51,14 +55,14 @@ ARMS=( "nnUNetTrainerDA5_200epochs"
        "nnUNetTrainerDA5SeptalTversky_200epochs"
        "nnUNetTrainerDA5SeptalOversampleTversky_200epochs" )
 
-# ---- Phase 0: build Dataset063 (v3 VSD-anchored septal derivation) ------------
+# ---- Phase 0: build Dataset070 (v3 VSD-anchored septal derivation) ------------
 if [ ! -f "${CKPT_DIR}/00_build.done" ]; then
   python tools/build_dataset062_vsd_anchored.py \
       --source-dataset "${nnUNet_raw}/${SOURCE_NAME}" \
       --target-id "${DATASET_ID}" --target-name imageCHD_VSDanchored_Fanwei \
       --metadata "${METADATA}" --out-root "${nnUNet_raw}" --test-frac 0.10 --overwrite
   touch "${CKPT_DIR}/00_build.done"
-  echo ">>> Dataset063 built. Inspect labelsTr/ + labelsTs/ before training if you want."
+  echo ">>> Dataset070 built. Inspect labelsTr/ + labelsTs/ before training if you want."
 fi
 
 # ---- Phase 1: plan & preprocess ----------------------------------------------
@@ -80,4 +84,4 @@ for TR in "${ARMS[@]}"; do
     touch "${CKPT_DIR}/pred_${TR}.done"
   fi
 done
-echo "DONE. Dataset063 (v3 VSD-anchored). Predictions in ${PRED_BASE}/<arm>/."
+echo "DONE. Dataset070 (v3 VSD-anchored). Predictions in ${PRED_BASE}/<arm>/."
