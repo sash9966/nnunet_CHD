@@ -21,6 +21,11 @@ Source for all: `Dataset030_imageCHD_HU` (read-only). Labels 1=LV 2=RV 3=LA 4=RA
 | **051** | **v2** — union of VSD (LV-RV − myo) + ASD (LA-RA direct) + AVSD cross (LV-RA/RV-LA direct); ASD-merge FIX (any component → label 8) | `--require-myo` excludes missing-myo from train | Dataset030 standard split (filtered) | no | `scripts/CHD_Dataset051_septal_ablation.sh` | `septal-v2-dataset051` |
 | **060** | **v2** (union) | clean only (missing-myo → test) | **NEW partition**: missing-myo cases (+stratified topup ~10%) | no (anatomy-only labelsTs) | `tools/build_dataset060_clean_holdout.py` / `scripts/CHD_Dataset060_clean_holdout.sh` | — |
 | **062** | **v3 — VSD-ANCHORED**: VSD (LV-RV − myo) is the anchor; ASD/AVSD-cross kept only where **continuous with the VSD** (within `septal_link_mm`≈5mm), off-septum atrial contacts dropped; pure-ASD (no anchor) kept best-effort as-is. No myo hole-filling. | clean only (missing-myo → test) | **NEW partition**: missing-myo (+stratified topup ~10%) | **YES** — septal derived on test too (degraded/low-conf for missing-myo; for visual inspection) | `tools/build_dataset062_vsd_anchored.py` / `scripts/CHD_Dataset062_vsd_anchored.sh` | — |
+| **063** | **v3 VSD-anchored** (same recipe as 062) | clean only (missing-myo → test) | **NEW partition** like 062 | **YES** (incl. missing-myo, degraded) | `scripts/CHD_Dataset063_vsd_anchored_fanwei.sh` (calls the 062 tool, `--metadata imageCHD_diagnosis_Fanwei_june21.csv`) | — |
+
+## Diagnosis sources
+- `imageCHD_dataset_info.xlsx` — **Kaggle ImageCHD** published flags (VSD 36, AVSD 0). Publishing baseline.
+- `imageCHD_diagnosis_Fanwei_june21.csv` — **Fanwei's (supervisor) June-21 re-review** (VSD 69, AVSD 10, + SV/HLHS/PuA, test/train/validate splits, notes col). Differs from Kaggle on 55/110 cases; more complete for VSD/AVSD. Used by **Dataset063**.
 
 ## Derivation code
 - v1: `chd_landmarks.derived_regions.build_septal_defect_proxy`
