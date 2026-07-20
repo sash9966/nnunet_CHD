@@ -49,12 +49,23 @@ PRED_BASE="${nnUNet_results}/${DATASET_NAME}/predictions"
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/septal_ablation"
 mkdir -p "${CKPT_DIR}" "${PRED_BASE}" /scratch/users/sastocke/nnunet_CHD/logs
 
-ARMS=( "nnUNetTrainerDA5_200epochs"
-       "nnUNetTrainerDA5SeptalOversample_200epochs"
-       "nnUNetTrainerDA5SeptalTversky_200epochs"
-       "nnUNetTrainerDA5SeptalTverskyV2_200epochs"
-       "nnUNetTrainerDA5SeptalOversampleTverskyV2_200epochs"
-       "nnUNetTrainerDA5SeptalOversampleTversky_200epochs" )
+# Comparison budget. PolyLR is tied to num_epochs, so arms MUST share a budget to
+# be comparable. Default = the FAIR 250-epoch matched set (baseline + oversample
+# rerun at 250; Tversky V2 warmup=100). Use `BUDGET=200 sbatch ...` for the old set.
+BUDGET="${BUDGET:-250}"
+if [ "${BUDGET}" = "250" ]; then
+  ARMS=( "nnUNetTrainerDA5_250epochs"
+         "nnUNetTrainerDA5SeptalOversample_250epochs"
+         "nnUNetTrainerDA5SeptalTverskyV2_250epochs"
+         "nnUNetTrainerDA5SeptalOversampleTverskyV2_250epochs" )
+else
+  ARMS=( "nnUNetTrainerDA5_200epochs"
+         "nnUNetTrainerDA5SeptalOversample_200epochs"
+         "nnUNetTrainerDA5SeptalTversky_200epochs"
+         "nnUNetTrainerDA5SeptalTverskyV2_200epochs"
+         "nnUNetTrainerDA5SeptalOversampleTverskyV2_200epochs"
+         "nnUNetTrainerDA5SeptalOversampleTversky_200epochs" )
+fi
 
 # ---- Phase 0: rebuild Dataset051 (ASD-fixed v2 label, exclude missing-myo from training)
 if [ ! -f "${CKPT_DIR}/00_build.done" ]; then

@@ -26,12 +26,16 @@ from nnunetv2.training.nnUNetTrainer.variants.mixins.septal_focus import (
     SeptalOversampleMixin, SeptalTverskyMixin)
 
 
-def _mk_epochs(base_cls, n):
+def _mk_epochs(base_cls, n, **attrs):
+    """Make an N-epoch variant. Extra kwargs override class attributes (e.g. a
+    longer Tversky warmup for a longer schedule)."""
     class _E(base_cls):
         def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
                      device: torch.device = torch.device('cuda')):
             super().__init__(plans, configuration, fold, dataset_json, device)
             self.num_epochs = n
+    for k, v in attrs.items():
+        setattr(_E, k, v)
     _E.__name__ = f"{base_cls.__name__}_{n}epochs"
     _E.__qualname__ = _E.__name__
     return _E
@@ -93,3 +97,14 @@ nnUNetTrainerDA5SeptalTversky_200epochs = _mk_epochs(nnUNetTrainerDA5SeptalTvers
 nnUNetTrainerDA5SeptalOversampleTversky_200epochs = _mk_epochs(nnUNetTrainerDA5SeptalOversampleTversky, 200)
 nnUNetTrainerDA5SeptalTverskyV2_200epochs = _mk_epochs(nnUNetTrainerDA5SeptalTverskyV2, 200)
 nnUNetTrainerDA5SeptalOversampleTverskyV2_200epochs = _mk_epochs(nnUNetTrainerDA5SeptalOversampleTverskyV2, 200)
+
+# ---- 250-epoch MATCHED-BUDGET set ---------------------------------------------
+# For the fair long-schedule comparison: PolyLR is tied to num_epochs, so 200->250
+# stretches the whole LR curve — every arm must share the SAME budget. Warmup is
+# scaled to 100 (class 8 emerges ~ep85; LR still ~0.006 at ep100). The DA5 baseline
+# _250epochs reference lives in data_augmentation/nnUNetTrainerDA5_epochs.py.
+nnUNetTrainerDA5SeptalOversample_250epochs = _mk_epochs(nnUNetTrainerDA5SeptalOversample, 250)
+nnUNetTrainerDA5SeptalTverskyV2_250epochs = _mk_epochs(
+    nnUNetTrainerDA5SeptalTverskyV2, 250, septal_tversky_warmup_epochs=100)
+nnUNetTrainerDA5SeptalOversampleTverskyV2_250epochs = _mk_epochs(
+    nnUNetTrainerDA5SeptalOversampleTverskyV2, 250, septal_tversky_warmup_epochs=100)

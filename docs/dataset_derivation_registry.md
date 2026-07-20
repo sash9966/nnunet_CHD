@@ -51,6 +51,13 @@ penalty + base-loss FP backlash). Oversampling is the lever that works.
 bias (α/β 0.4/0.6) — `nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}_200epochs`,
 added to the 051/062/070 ablation scripts (rerun skips completed arms).
 
+**Fair long-schedule set (250ep, `BUDGET=250`, the script default):** val loss was still
+dropping and class 8 still rising at ep200. PolyLR is tied to `num_epochs`, so 200→250
+*stretches the whole LR curve* — comparing a 250-epoch arm against a 200-epoch reference
+would confound the loss with both the extra epochs AND a different LR-at-each-epoch. So
+the 250 set reruns **every** arm at 250 (baseline + oversample + V2 arms, warmup scaled
+to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original set.
+
 ## Derivation code
 - v1: `chd_landmarks.derived_regions.build_septal_defect_proxy`
 - v2: `chd_landmarks.derived_regions.build_septal_defect`
