@@ -52,6 +52,8 @@ mkdir -p "${CKPT_DIR}" "${PRED_BASE}" /scratch/users/sastocke/nnunet_CHD/logs
 ARMS=( "nnUNetTrainerDA5_200epochs"
        "nnUNetTrainerDA5SeptalOversample_200epochs"
        "nnUNetTrainerDA5SeptalTversky_200epochs"
+       "nnUNetTrainerDA5SeptalTverskyV2_200epochs"
+       "nnUNetTrainerDA5SeptalOversampleTverskyV2_200epochs"
        "nnUNetTrainerDA5SeptalOversampleTversky_200epochs" )
 
 # ---- Phase 0: rebuild Dataset051 (ASD-fixed v2 label, exclude missing-myo from training)

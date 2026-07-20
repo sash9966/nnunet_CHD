@@ -116,6 +116,7 @@ Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.
 |---|---|---|
 | `nnUNetTrainerDA5DiseaseLandmark` + `_100e/_200e/_500e` | `nnUNetTrainerDA5DiseaseLandmark.py` | Soft-Dice on derived disease-proxy labels (positive-supervision only) + great-vessel clDice; pairs with the `chd_landmarks` package (see §9) |
 | `nnUNetTrainerDA5Septal{Oversample,Tversky,OversampleTversky}` + `_200e` | `nnUNetTrainerDA5SeptalAblation.py` | Septal-defect ablation arms (Dataset051): oversampling lever, FN-weighted Tversky lever, and combined. Reference = `nnUNetTrainerDA5`. |
+| `nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}` + `_200e` | `nnUNetTrainerDA5SeptalAblation.py` | **FIXED Tversky** arms. Dataset070 ablation showed the original weight-1.0 Tversky *collapsed* class 8 to 0 predicted voxels (0/13 test cases vs oversample-only 10/13). V2 = weight 0.1 + warmup (term off until ep50) + linear ramp (30 ep) + softer bias (α/β 0.4/0.6). Original arms kept for reproducibility. **Oversample-only was the winning arm** (10/13 cases, val pseudo-Dice 0.22 vs baseline 0.16). |
 
 ### Other
 - `nnUNetTrainerDA5Gated` + `_100e/_200e` — Spatially-gated disease conditioning (GatedConditionedResEncUNet)

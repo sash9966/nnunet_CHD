@@ -53,6 +53,8 @@ mkdir -p "${CKPT_DIR}" "${PRED_BASE}" /scratch/users/sastocke/nnunet_CHD/logs
 ARMS=( "nnUNetTrainerDA5_200epochs"
        "nnUNetTrainerDA5SeptalOversample_200epochs"
        "nnUNetTrainerDA5SeptalTversky_200epochs"
+       "nnUNetTrainerDA5SeptalTverskyV2_200epochs"
+       "nnUNetTrainerDA5SeptalOversampleTverskyV2_200epochs"
        "nnUNetTrainerDA5SeptalOversampleTversky_200epochs" )
 
 # ---- Phase 0: build Dataset070 (v3 VSD-anchored septal derivation) ------------

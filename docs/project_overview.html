@@ -272,19 +272,20 @@
   <!-- ── LATEST CHANGE banner ── -->
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
-      <span class="badge badge-accent">★ Latest · 2026-07-02</span>
-      <h3 style="margin-left:10px;">Septal-defect label v2 (AVSD fix) — Dataset050 (v1) vs Dataset051 (v2) A/B</h3>
+      <span class="badge badge-accent">★ Latest · 2026-07-20</span>
+      <h3 style="margin-left:10px;">Septal-focus ablation (Dataset070): Tversky <em>collapses</em> the class — oversampling wins</h3>
     </div>
-    <p>The <code>chd_landmarks/</code> package derives CHD disease landmarks from GT anatomy +
-    diagnosis flags and builds a unified <strong>septal-defect</strong> label (id 8).
-    <strong>v2 derivation</strong> fixes an AVSD bug: v1 only checked LV–RV &amp; LA–RA and split
-    AVSD into disconnected blobs; v2 adds the AV-cross connections (LV–RA, RV–LA) and unions all
-    flag-gated contacts (VSD = LV–RV minus myocardium; ASD/AVSD = tight direct adjacency, since the
-    atrial septum isn't labelled). Two datasets for comparison:
-    <code>Dataset050</code> (v1, tag <code>septal-v1-dataset050</code>) and
-    <code>Dataset051</code> (v2, tag <code>septal-v2-dataset051</code>). Run scripts:
-    <code>scripts/CHD_Dataset05{0,1}_disease_landmarks.sh</code>. Septal-defect eval is Step 10 of the
-    Alison <code>dice_analysis.ipynb</code>. <a href="#disease-landmarks">Jump to details →</a></p>
+    <p>Ran the four septal-focus arms on <code>Dataset070</code> (Fanwei flags, v3 VSD-anchored).
+    <strong>Both weight-1.0 Tversky arms suppressed the septal class to zero</strong> — 0/13 test cases
+    with any class-8 voxel, val pseudo-Dice rises then collapses to 0 (ep~115 solo, ep~40 with
+    oversample). The recall-biased term over-fires the tiny class, the base loss backlashes, and the
+    optimiser settles on predicting no defect. <strong>Oversample-only is the winner</strong>:
+    10/13 cases, val pseudo-Dice ~0.22 vs baseline ~0.16.
+    <strong>Fix (V2 arms):</strong> weight 0.1 + warmup (off until ep50) + linear ramp + softer bias
+    (α/β 0.4/0.6) → <code>nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}_200epochs</code>,
+    added to the 051/062/070 ablation scripts (resubmit skips completed arms).
+    <br><span style="color:var(--muted);">Prior: v2 septal label (AVSD fix), Dataset050 (v1) vs Dataset051 (v2) A/B.</span>
+    <a href="#disease-landmarks">Jump to details →</a></p>
   </div>
 
   <!-- ── Current focus call-out ── -->

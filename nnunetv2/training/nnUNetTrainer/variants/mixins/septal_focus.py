@@ -81,10 +81,24 @@ class SeptalTverskyMixin(TrainerMixin):
       septal_tversky_weight : weight on the term. Default 1.0.
       septal_tversky_alpha  : FP weight. Default 0.3.
       septal_tversky_beta   : FN weight (>alpha to find the small defect). Default 0.7.
+      septal_tversky_warmup_epochs : epochs to keep the term OFF at the start, so
+        the septal class can emerge under the base Dice+CE before the recall-biased
+        term acts. 0 (default) = no warmup, constant weight (legacy arms unchanged).
+      septal_tversky_ramp_epochs : after warmup, epochs over which the weight ramps
+        linearly 0 -> septal_tversky_weight (avoids a destabilising step). Default 30.
+
+    WHY warmup+ramp+low weight exist (Dataset070 ablation, 2026-07): at weight 1.0
+    with alpha/beta=0.3/0.7 the term COLLAPSED the septal class to 0 predicted voxels
+    on the test set (both Tversky arms: 0/13 cases vs oversample-only 10/13). The
+    recall bias over-fired the tiny class early, the base loss backlashed, and the
+    optimiser found it cheaper to suppress class 8 entirely. Fix = small weight +
+    let the class emerge first + softer bias. See nnUNetTrainerDA5SeptalTverskyV2.
     """
     septal_tversky_weight: float = 1.0
     septal_tversky_alpha: float = 0.3
     septal_tversky_beta: float = 0.7
+    septal_tversky_warmup_epochs: int = 0
+    septal_tversky_ramp_epochs: int = 30
 
     def mixin_init(self):
         super().mixin_init()
@@ -100,11 +114,29 @@ class SeptalTverskyMixin(TrainerMixin):
         else:
             self.print_to_log_file(
                 f"[SeptalTversky] septal id {self._septal_id}, weight={self.septal_tversky_weight}, "
-                f"alpha={self.septal_tversky_alpha}, beta={self.septal_tversky_beta}")
+                f"alpha={self.septal_tversky_alpha}, beta={self.septal_tversky_beta}, "
+                f"warmup={self.septal_tversky_warmup_epochs} ramp={self.septal_tversky_ramp_epochs}")
+
+    def _tversky_weight_now(self) -> float:
+        """Effective weight this epoch, applying optional warmup + linear ramp.
+
+        warmup<=0 -> constant weight (legacy behaviour, byte-for-byte). Otherwise
+        0 until `warmup`, then linear 0->weight over `ramp` epochs, then full.
+        """
+        w = self.septal_tversky_warmup_epochs
+        if w <= 0:
+            return self.septal_tversky_weight
+        if self.current_epoch < w:
+            return 0.0
+        r = max(1, self.septal_tversky_ramp_epochs)
+        return self.septal_tversky_weight * min(1.0, (self.current_epoch - w) / r)
 
     def mixin_extra_loss(self, output, target, batch: dict, **forward_kwargs) -> float:
         if self._septal_id is None:
             return 0.0
+        w_now = self._tversky_weight_now()
+        if w_now == 0.0:
+            return 0.0  # in warmup window: term is off
         logits = output[0] if isinstance(output, (list, tuple)) else output
         tgt = target[0] if isinstance(target, (list, tuple)) else target
         probs = softmax_helper_dim1(logits)
@@ -114,12 +146,17 @@ class SeptalTverskyMixin(TrainerMixin):
             return 0.0  # positive-supervision only: don't penalise where GT has no defect
         loss = soft_tversky_binary(p, gt, self.septal_tversky_alpha, self.septal_tversky_beta)
         self._septal_tversky_accum.append(float(loss.detach()))
-        return self.septal_tversky_weight * loss
+        return w_now * loss
 
     def mixin_on_train_epoch_end(self, train_outputs):
         super().mixin_on_train_epoch_end(train_outputs)
         if self._septal_tversky_accum:
             self.print_to_log_file(
                 f"[SeptalTversky] mean term: "
-                f"{sum(self._septal_tversky_accum) / len(self._septal_tversky_accum):.4f}")
+                f"{sum(self._septal_tversky_accum) / len(self._septal_tversky_accum):.4f} "
+                f"(eff weight {self._tversky_weight_now():.3f})")
             self._septal_tversky_accum.clear()
+        elif self.septal_tversky_warmup_epochs > 0 and self.current_epoch < self.septal_tversky_warmup_epochs:
+            self.print_to_log_file(
+                f"[SeptalTversky] warmup: term OFF (epoch {self.current_epoch} "
+                f"< {self.septal_tversky_warmup_epochs})")

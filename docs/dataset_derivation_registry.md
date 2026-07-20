@@ -33,6 +33,24 @@ Source for all: `Dataset030_imageCHD_HU` (read-only). Labels 1=LV 2=RV 3=LA 4=RA
 > v3 VSD-anchored geometry, same partition logic — only the flags differ. 070
 > should produce a septal label for more cases (Fanwei flags more VSD/AVSD).
 
+## Septal-focus ablation result (Dataset070, fold 0, 200ep)
+Which lever actually helps the model *predict* the septal class (id 8), measured on
+the 13-case test set + val pseudo-Dice:
+
+| arm | val pseudo-Dice (class 8) | test cases w/ class 8 |
+|---|---|---|
+| DA5 baseline | ~0.16 (emerges ~ep85) | 8/13 |
+| **SeptalOversample** ✅ | **~0.22** | **10/13** |
+| SeptalTversky (w=1.0) ❌ | rises then **collapses to 0 @ ep~115** | **0/13** |
+| SeptalOversampleTversky (w=1.0) ❌ | bump then **collapses @ ep~40** | **0/13** |
+
+**Finding:** the weight-1.0 FN-biased Tversky term SUPPRESSES the tiny class entirely
+(the optimiser finds it cheaper to predict no class 8 than to pay the recall-biased
+penalty + base-loss FP backlash). Oversampling is the lever that works.
+**Fix (V2 arms):** weight 0.1 + warmup (off until ep50) + linear ramp (30ep) + softer
+bias (α/β 0.4/0.6) — `nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}_200epochs`,
+added to the 051/062/070 ablation scripts (rerun skips completed arms).
+
 ## Derivation code
 - v1: `chd_landmarks.derived_regions.build_septal_defect_proxy`
 - v2: `chd_landmarks.derived_regions.build_septal_defect`
