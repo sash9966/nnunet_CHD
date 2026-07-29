@@ -284,6 +284,7 @@
     <strong>Fix (V2 arms):</strong> weight 0.1 + warmup (off until ep50) + linear ramp + softer bias
     (α/β 0.4/0.6) → <code>nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}_200epochs</code>,
     added to the 051/062/070 ablation scripts (resubmit skips completed arms).
+    <br><span style="color:var(--muted);">Clinical track: <code>Dataset071_ImageCHDClinicalOrientation</code> — images from Dataset060 + clean 7-class labels from Dataset030 (no septal), physically reoriented RAS→LPS (<code>tools/build_dataset071_clinical_orientation.py</code>). The "train &amp; send to clinic" anatomy model.</span>
     <br><span style="color:var(--muted);">Prior: v2 septal label (AVSD fix), Dataset050 (v1) vs Dataset051 (v2) A/B.</span>
     <a href="#disease-landmarks">Jump to details →</a></p>
   </div>

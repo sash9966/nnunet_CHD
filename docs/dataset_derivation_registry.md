@@ -70,7 +70,17 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
 - **pure-ASD (18/110)** — approximate (atrial septum unlabeled, no anchor); v3 keeps it best-effort.
 - **missing-myo** — degraded; excluded from train everywhere from 051 on; in 062 kept in test for inspection only.
 
-## Planned / not yet built
-- **Clinician dataset** — clean anatomy only (7 labels, NO septal label), all-myo, reoriented +
-  respaced to the clinical acquisition (deployment domain). Deferred (orientation/spacing debug
-  is a separate step). This is the "train and send to clinic" model.
+## Clinical deployment track (no septal label)
+- **Dataset071** `Dataset071_ImageCHDClinicalOrientation` — the "train and send to clinic"
+  anatomy model, first increment. Images from Dataset060 (clean-train partition); **clean
+  7-class labels pulled from the original Dataset030 (NO septal id 8)**; physically reoriented
+  **RAS→LPS** to match clinical inference (`sitk.DICOMOrient`, true voxel flip, not a header
+  edit). No HU shift, no resampling — nnU-Net handles spacing. Built by
+  `tools/build_dataset071_clinical_orientation.py` (self-verifies LPS + image/label geometry +
+  lossless labels/HU). Rationale: LV/RV boundary speckle + the septal 3-way competition are
+  research concerns, not wanted in a clinical anatomy product.
+
+### Still planned
+- **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller
+  clinician set may additionally drop missing-myo entirely and respace to the clinical
+  acquisition; deferred until the LPS model is validated end-to-end.
