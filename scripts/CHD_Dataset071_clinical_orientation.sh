@@ -3,16 +3,18 @@
 #  CHD_Dataset071_clinical_orientation.sh
 #  Dataset071_ImageCHDClinicalOrientation — clinical (LPS) 7-class anatomy model.
 #
-#     Phase 0   verify Dataset071 exists (build it first with the tool if not)
+#     Phase 0   BUILD Dataset071 (RAS->LPS reorient, clean 7-class labels) on the
+#               compute node -- much faster than the throttled login node
 #     Phase 1   plan_and_preprocess (3d_fullres, ResEncM)
 #     Phase 1b  reuse Dataset060 splits_final.json (verified case-set match) -> 5-fold
+#               (falls back to nnU-Net auto 5-fold if that split is absent)
 #     Phase 2   train DA5 @200 and @500 epochs, all 5 folds
 #
 #  RESUME: a (trainer,fold) whose checkpoint_final.pth exists is SKIPPED; one with a
 #          checkpoint_latest.pth is RESUMED (--c). 10 runs (2 schedules x 5 folds),
 #          the 500-epoch folds are long -> just resubmit this script until done.
-#  Prereq: git pull; build Dataset071 first:
-#          python tools/build_dataset071_clinical_orientation.py --overwrite
+#  Prereq: git pull. The build sources images+labels from Dataset030 (the original
+#          HU dataset), so it does not depend on Dataset060 existing.
 # =============================================================================
 #SBATCH --job-name=D071-clinical
 #SBATCH --partition=bioe
@@ -50,7 +52,9 @@ export PYTHONUNBUFFERED=1
 REPO="/scratch/users/sastocke/nnunet_CHD"
 DATASET_ID=71
 DATASET_NAME="Dataset071_ImageCHDClinicalOrientation"
-SPLITS_SRC_NAME="Dataset060_imageCHD_CleanHoldout"   # reuse this dataset's 5-fold split
+BUILD_IMAGES_DS="Dataset030_imageCHD_HU"             # image source (same content as D060; D030 always present)
+BUILD_LABELS_DS="Dataset030_imageCHD_HU"             # clean 7-class labels (no septal id 8)
+SPLITS_SRC_NAME="Dataset060_imageCHD_CleanHoldout"   # reuse this dataset's 5-fold split if present
 PLANNER="nnUNetPlannerResEncM"
 PLANS="nnUNetResEncUNetMPlans"          # plans id the ResEncM planner writes (pass via -p)
 FULLRES="3d_fullres"
@@ -62,12 +66,21 @@ mkdir -p "${CKPT_DIR}" /scratch/users/sastocke/nnunet_CHD/logs
 cd "${REPO}"
 
 # ─────────────────────────────────────────────
-# Phase 0 — Dataset071 must exist (build it first with the tool)
+# Phase 0 — BUILD Dataset071 (reorient RAS->LPS; runs here on the compute node)
+#   Images + clean 7-class labels both from Dataset030 (no dependency on Dataset060).
+#   The builder self-verifies LPS + geometry + lossless labels/HU and exits non-zero
+#   on any failure, so a bad build aborts the job before preprocessing.
 # ─────────────────────────────────────────────
-if [ ! -d "${nnUNet_raw}/${DATASET_NAME}/imagesTr" ]; then
-  echo "ERROR: ${nnUNet_raw}/${DATASET_NAME} not found."
-  echo "Build it first:  python tools/build_dataset071_clinical_orientation.py --overwrite"
-  exit 1
+if [ ! -f "${CKPT_DIR}/00_build.done" ]; then
+  echo "[Phase 0] building ${DATASET_NAME} from ${BUILD_IMAGES_DS} (RAS->LPS)"
+  python tools/build_dataset071_clinical_orientation.py \
+      --nnunet-raw "${nnUNet_raw}" \
+      --images-dataset "${BUILD_IMAGES_DS}" \
+      --labels-dataset "${BUILD_LABELS_DS}" \
+      --overwrite
+  touch "${CKPT_DIR}/00_build.done"
+else
+  echo "[Phase 0] build already done — skipping"
 fi
 
 # ─────────────────────────────────────────────
@@ -90,6 +103,13 @@ fi
 #   training case-set EXACTLY before copying — never train on a mismatched split.
 # ─────────────────────────────────────────────
 if [ ! -f "${CKPT_DIR}/01b_splits.done" ]; then
+  SRC_SPLITS="${nnUNet_preprocessed}/${SPLITS_SRC_NAME}/splits_final.json"
+  if [ ! -f "${SRC_SPLITS}" ]; then
+    echo "[Phase 1b] WARNING: ${SRC_SPLITS} not found (Dataset060 absent or never trained)."
+    echo "           Falling back to nnU-Net's auto-generated 5-fold split over"
+    echo "           Dataset071's training cases (folds will NOT match Dataset060)."
+    touch "${CKPT_DIR}/01b_splits.done"
+  else
   echo "[Phase 1b] verifying + copying ${SPLITS_SRC_NAME} splits_final.json"
   python3 - "${DATASET_NAME}" "${SPLITS_SRC_NAME}" <<'PY'
 import json, os, sys
@@ -119,6 +139,7 @@ json.dump(splits, open(dst, 'w'), indent=1)
 print(f"[splits] MATCH — copied {src} split -> {dst} ({len(splits)} folds)")
 PY
   touch "${CKPT_DIR}/01b_splits.done"
+  fi
 else
   echo "[Phase 1b] splits already set — skipping"
 fi
