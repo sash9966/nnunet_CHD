@@ -157,6 +157,7 @@ def main():
     channel_names = img_json.get("channel_names") or lab_json.get("channel_names", {"0": "CT"})
     labels = lab_json["labels"]  # clean 7-class from the ORIGINAL dataset (no septal id 8)
     allowed_ids = {int(v) for v in labels.values()}
+    allowed_ids.add(0)           # background is always a valid label value
     if 8 in allowed_ids:
         sys.exit("ERROR: labels dataset contains id 8 (septal) -- wrong labels source for a clinical set")
 
