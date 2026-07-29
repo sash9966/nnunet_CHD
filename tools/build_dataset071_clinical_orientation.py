@@ -70,9 +70,20 @@ def label_hist(img: sitk.Image) -> dict:
     return {int(v): int(c) for v, c in zip(vals, counts)}
 
 
-def intensity_summary(img: sitk.Image) -> tuple:
-    a = sitk.GetArrayViewFromImage(img)
-    return (a.size, float(a.min()), float(a.max()), float(a.sum()))
+def values_preserved(a: sitk.Image, b: sitk.Image) -> bool:
+    """True iff a and b hold the SAME multiset of voxel values (order-independent).
+
+    DICOMOrient only permutes/flips voxels, so values must be identical. We compare
+    SORTED voxel arrays -- NOT a float sum, which is summation-order sensitive and
+    would spuriously differ after an axis flip on float (HU) images even though no
+    value changed. min/max/size are order-invariant and checked implicitly by the
+    sorted-array equality.
+    """
+    ai = sitk.GetArrayViewFromImage(a)
+    bo = sitk.GetArrayViewFromImage(b)
+    if ai.size != bo.size or ai.dtype != bo.dtype:
+        return False
+    return np.array_equal(np.sort(ai, axis=None), np.sort(bo, axis=None))
 
 
 def geom(img: sitk.Image) -> tuple:
@@ -212,10 +223,9 @@ def main():
         for f in cases[cid]["channels"]:
             ch = CHANNEL_RE.search(f.name).group(1)
             img_in = sitk.ReadImage(str(f))
-            s_in = intensity_summary(img_in)
             img_out = reorient(img_in)
-            if intensity_summary(img_out) != s_in:
-                failures.append(f"{cid}_{ch}: intensity summary changed (HU altered!)"); ok = False; break
+            if not values_preserved(img_in, img_out):
+                failures.append(f"{cid}_{ch}: voxel values changed on reorient (HU altered!)"); ok = False; break
             if orient_code(img_out) != TARGET_ORIENTATION:
                 failures.append(f"{cid}_{ch}: image not {TARGET_ORIENTATION}"); ok = False; break
             if not geom_matches(img_out, lab_out):
