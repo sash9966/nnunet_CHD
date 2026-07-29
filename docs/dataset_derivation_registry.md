@@ -72,13 +72,16 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
 
 ## Clinical deployment track (no septal label)
 - **Dataset071** `Dataset071_ImageCHDClinicalOrientation` — the "train and send to clinic"
-  anatomy model, first increment. Images from Dataset060 (clean-train partition); **clean
-  7-class labels pulled from the original Dataset030 (NO septal id 8)**; physically reoriented
-  **RAS→LPS** to match clinical inference (`sitk.DICOMOrient`, true voxel flip, not a header
-  edit). No HU shift, no resampling — nnU-Net handles spacing. Built by
+  anatomy model, first increment. Images from Dataset060; **clean 7-class labels pulled from
+  the original Dataset030 (NO septal id 8)**; physically reoriented **RAS→LPS** to match
+  clinical inference (`sitk.DICOMOrient`, true voxel flip, not a header edit). No HU shift, no
+  resampling — nnU-Net handles spacing. **Both sources are pooled across Tr+Ts (ImageCHD's
+  original split is arbitrary) and the output is re-partitioned by myocardium presence in the
+  label: myo→train, no-myo→holdout — so every training case has real myocardium.** Built by
   `tools/build_dataset071_clinical_orientation.py` (self-verifies LPS + image/label geometry +
-  lossless labels/HU). Rationale: LV/RV boundary speckle + the septal 3-way competition are
-  research concerns, not wanted in a clinical anatomy product.
+  lossless labels/HU; `--no-myo-partition` follows the source folders instead). Rationale:
+  LV/RV boundary speckle + the septal 3-way competition are research concerns, not wanted in a
+  clinical anatomy product.
 
 ### Still planned
 - **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller

@@ -7,12 +7,19 @@ Build Dataset071_ImageCHDClinicalOrientation: a CLINICALLY-ORIENTED (LPS) copy o
 the ImageCHD training data, for the "train and send to clinic" anatomy model.
 
 What it does (and deliberately does NOT do):
-  * IMAGES come from the images dataset (default Dataset060_imageCHD_CleanHoldout) --
-    same cases / same clean-train partition. Native HU, untouched intensities.
+  * IMAGES come from the images dataset (default Dataset060_imageCHD_CleanHoldout).
+    Native HU, untouched intensities.
   * LABELS come from the ORIGINAL labels dataset (default Dataset030_imageCHD_HU),
     matched by case id. These are the clean 7-class anatomy labels -- NO septal
     label (id 8). Dataset060's septal label is intentionally dropped: clinical
     anatomy service = 7 classes only.
+  * BOTH source datasets are POOLED across their Tr AND Ts folders, because
+    ImageCHD's original Tr/Ts split is arbitrary (not myocardium-based). The
+    OUTPUT partition is then decided PER CASE by myocardium presence in the label:
+    myo present -> imagesTr/labelsTr (training), myo absent -> imagesTs/labelsTs
+    (holdout). This GUARANTEES every training case has real myocardium, regardless
+    of how the sources were split. (Override with --no-myo-partition to instead
+    follow the images dataset's own Tr/Ts folders.)
   * Every image AND its label are physically reoriented to LPS with a TRUE
     orientation transform (SimpleITK DICOMOrient) -- a voxel-array permute/flip,
     NOT a header edit. No HU shift. No spacing resampling. No fixed size/depth.
@@ -92,19 +99,33 @@ def index_labels(labels_ds: Path, fe: str) -> dict:
     return idx
 
 
-def gather_images(images_ds: Path, sub: str, fe: str) -> dict:
-    """case_id -> [channel image paths] from images_ds/<sub>."""
-    d = images_ds / sub
-    cases: dict[str, list] = {}
-    if not d.is_dir():
-        return cases
-    for f in sorted(d.glob(f"*{fe}")):
-        m = CHANNEL_RE.search(f.name)
-        if not m:
+def gather_images(images_ds: Path, fe: str) -> dict:
+    """case_id -> {'channels': [paths], 'src_sub': 'imagesTr'|'imagesTs'}, pooling
+    BOTH imagesTr and imagesTs (source Tr/Ts split is arbitrary)."""
+    cases: dict[str, dict] = {}
+    for sub in ("imagesTr", "imagesTs"):
+        d = images_ds / sub
+        if not d.is_dir():
             continue
-        case = f.name[: m.start()]
-        cases.setdefault(case, []).append(f)
+        for f in sorted(d.glob(f"*{fe}")):
+            m = CHANNEL_RE.search(f.name)
+            if not m:
+                continue
+            case = f.name[: m.start()]
+            cases.setdefault(case, {"channels": [], "src_sub": sub})["channels"].append(f)
     return cases
+
+
+def resolve_myo_id(labels: dict) -> int:
+    """Myocardium label id, resolved by name from the labels dataset.json (fallback 5)."""
+    for name, val in labels.items():
+        if "myo" in str(name).lower():
+            return int(val)
+    return 5
+
+
+def label_has_myo(lab_img: sitk.Image, myo_id: int) -> bool:
+    return bool((sitk.GetArrayViewFromImage(lab_img) == myo_id).any())
 
 
 def main():
@@ -114,7 +135,9 @@ def main():
     ap.add_argument("--labels-dataset", default="Dataset030_imageCHD_HU")
     ap.add_argument("--target-id", type=int, default=71)
     ap.add_argument("--target-name", default="ImageCHDClinicalOrientation")
-    ap.add_argument("--no-test", action="store_true", help="skip imagesTs/labelsTs")
+    ap.add_argument("--no-myo-partition", action="store_true",
+                    help="follow the images dataset's own Tr/Ts folders instead of "
+                         "re-partitioning by myocardium presence")
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
@@ -144,65 +167,71 @@ def main():
     for sub in ("imagesTr", "labelsTr", "imagesTs", "labelsTs"):
         (dst / sub).mkdir(parents=True, exist_ok=True)
 
-    label_idx = index_labels(labels_ds, fe)
-    print(f"[d071] images from {images_ds.name} | labels from {labels_ds.name} "
-          f"({len(label_idx)} original labels indexed)")
+    myo_id = resolve_myo_id(labels)
+    label_idx = index_labels(labels_ds, fe)          # pools labelsTr + labelsTs
+    cases = gather_images(images_ds, fe)             # pools imagesTr + imagesTs
+    ids = sorted(cases)
+    if args.limit:
+        ids = ids[: args.limit]
+    part = "images-dataset Tr/Ts folders" if args.no_myo_partition else f"myocardium presence (id {myo_id})"
+    print(f"[d071] images from {images_ds.name} (pooled Tr+Ts, {len(cases)} cases) | "
+          f"labels from {labels_ds.name} (pooled, {len(label_idx)} labels)")
+    print(f"[d071] output partition by: {part}")
     print(f"[d071] target labels ({len(allowed_ids)} classes, no septal): {labels}")
 
-    subsets = [("imagesTr", "labelsTr")] + ([] if args.no_test else [("imagesTs", "labelsTs")])
-    failures, n_train, n_done = [], 0, 0
+    failures, n_train, n_test, n_done = [], 0, 0, 0
+    for cid in ids:
+        if cid not in label_idx:
+            failures.append(f"{cid}: no original label in {labels_ds.name}")
+            continue
+        # ---- label: read original, verify clean, reorient, verify lossless ----
+        lab_in = sitk.ReadImage(str(label_idx[cid]))
+        hist_in = label_hist(lab_in)
+        leaked = set(hist_in) - allowed_ids
+        if leaked:
+            failures.append(f"{cid}: original label has unexpected ids {leaked}")
+            continue
+        # ---- decide Tr vs Ts: myo present -> train (default), else holdout ----
+        if args.no_myo_partition:
+            to_train = cases[cid]["src_sub"] == "imagesTr"
+        else:
+            to_train = label_has_myo(lab_in, myo_id)
+        img_sub, lab_sub = ("imagesTr", "labelsTr") if to_train else ("imagesTs", "labelsTs")
 
-    for img_sub, lab_sub in subsets:
-        cases = gather_images(images_ds, img_sub, fe)
-        ids = sorted(cases)
-        if args.limit:
-            ids = ids[: args.limit]
-        print(f"\n[d071] {img_sub}: {len(ids)} case(s)")
-        for cid in ids:
-            if cid not in label_idx:
-                failures.append(f"{cid}: no original label in {labels_ds.name}")
-                continue
-            # ---- label: read original, verify clean, reorient, verify lossless ----
-            lab_in = sitk.ReadImage(str(label_idx[cid]))
-            hist_in = label_hist(lab_in)
-            leaked = set(hist_in) - allowed_ids
-            if leaked:
-                failures.append(f"{cid}: original label has unexpected ids {leaked}")
-                continue
-            lab_out = reorient(lab_in)
-            if label_hist(lab_out) != hist_in:
-                failures.append(f"{cid}: label histogram changed on reorient")
-                continue
-            if orient_code(lab_out) != TARGET_ORIENTATION:
-                failures.append(f"{cid}: label not {TARGET_ORIENTATION} after reorient")
-                continue
+        lab_out = reorient(lab_in)
+        if label_hist(lab_out) != hist_in:
+            failures.append(f"{cid}: label histogram changed on reorient")
+            continue
+        if orient_code(lab_out) != TARGET_ORIENTATION:
+            failures.append(f"{cid}: label not {TARGET_ORIENTATION} after reorient")
+            continue
 
-            # ---- images: reorient each channel, verify HU + orientation + geom ----
-            ok = True
-            out_imgs = []
-            for f in cases[cid]:
-                m = CHANNEL_RE.search(f.name)
-                ch = m.group(1)
-                img_in = sitk.ReadImage(str(f))
-                s_in = intensity_summary(img_in)
-                img_out = reorient(img_in)
-                if intensity_summary(img_out) != s_in:
-                    failures.append(f"{cid}_{ch}: intensity summary changed (HU altered!)"); ok = False; break
-                if orient_code(img_out) != TARGET_ORIENTATION:
-                    failures.append(f"{cid}_{ch}: image not {TARGET_ORIENTATION}"); ok = False; break
-                if not geom_matches(img_out, lab_out):
-                    failures.append(f"{cid}_{ch}: image/label geometry mismatch after reorient"); ok = False; break
-                out_imgs.append((ch, img_out))
-            if not ok:
-                continue
+        # ---- images: reorient each channel, verify HU + orientation + geom ----
+        ok, out_imgs = True, []
+        for f in cases[cid]["channels"]:
+            ch = CHANNEL_RE.search(f.name).group(1)
+            img_in = sitk.ReadImage(str(f))
+            s_in = intensity_summary(img_in)
+            img_out = reorient(img_in)
+            if intensity_summary(img_out) != s_in:
+                failures.append(f"{cid}_{ch}: intensity summary changed (HU altered!)"); ok = False; break
+            if orient_code(img_out) != TARGET_ORIENTATION:
+                failures.append(f"{cid}_{ch}: image not {TARGET_ORIENTATION}"); ok = False; break
+            if not geom_matches(img_out, lab_out):
+                failures.append(f"{cid}_{ch}: image/label geometry mismatch after reorient"); ok = False; break
+            out_imgs.append((ch, img_out))
+        if not ok:
+            continue
 
-            # ---- write (only after all checks pass for this case) ----
-            for ch, img_out in out_imgs:
-                sitk.WriteImage(img_out, str(dst / img_sub / f"{cid}_{ch}{fe}"))
-            sitk.WriteImage(lab_out, str(dst / lab_sub / f"{cid}{fe}"))
-            n_done += 1
-            if img_sub == "imagesTr":
-                n_train += 1
+        # ---- write (only after all checks pass for this case) ----
+        for ch, img_out in out_imgs:
+            sitk.WriteImage(img_out, str(dst / img_sub / f"{cid}_{ch}{fe}"))
+        sitk.WriteImage(lab_out, str(dst / lab_sub / f"{cid}{fe}"))
+        n_done += 1
+        if to_train:
+            n_train += 1
+        else:
+            n_test += 1
 
     # ---- dataset.json ----
     ds_json = {
@@ -226,7 +255,7 @@ def main():
         if orient_code(sitk.ReadImage(str(lf))) != TARGET_ORIENTATION:
             reread_bad.append(lf.name)
 
-    print(f"\n[d071] wrote {n_done} case(s) -> {dst}  (numTraining={n_train})")
+    print(f"\n[d071] wrote {n_done} case(s) -> {dst}  (train/myo={n_train}, holdout/no-myo={n_test})")
     if reread_bad:
         print(f"[d071] RE-READ FAILED (not {TARGET_ORIENTATION}): {reread_bad}")
     if failures:
