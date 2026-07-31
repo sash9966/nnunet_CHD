@@ -83,6 +83,16 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
   LV/RV boundary speckle + the septal 3-way competition are research concerns, not wanted in a
   clinical anatomy product.
 
+- **Dataset072** `Dataset072_ImageCHDMultiFOV` — clinical **domain adaptation via FOV/scale
+  diversity**. From the LPS Dataset071, per case emits a full copy + cardiac-bbox crops at 60 mm
+  and 30 mm/side (`_full`/`_bbox60mm`/`_bbox30mm`). Pure ImageCHD trains well but generalizes
+  poorly to clinical CT, whose FOV is tight around the heart; the crops shift nnU-Net's shape
+  fingerprint toward that domain. **Crop-only** (sub-region extraction): spacing, HU and label
+  values preserved exactly — NO resample/upsample (no invented detail). Deterministic v1 (no
+  random aug yet). `tools/build_dataset072_multifov.py`; QA reports + `case_groups.json`.
+  ⚠ Use a **grouped CV split** (all `<case>_*` in one fold) or validation leaks across a
+  patient's own variants.
+
 ### Still planned
 - **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller
   clinician set may additionally drop missing-myo entirely and respace to the clinical
