@@ -35,3 +35,14 @@ class nnUNetTrainerDA5_500epochs(nnUNetTrainerDA5):
                  device: torch.device = torch.device('cuda')):
         super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 500
+
+
+class nnUNetTrainerDA5_finetune(nnUNetTrainerDA5):
+    """Gentle fine-tuning for a small target set (e.g. a few clinical cases):
+    short schedule + low LR so pretrained weights adapt without overfitting.
+    Use with `-pretrained_weights <source checkpoint>`; DA5 augmentation stays on."""
+    def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict,
+                 device: torch.device = torch.device('cuda')):
+        super().__init__(plans, configuration, fold, dataset_json, device)
+        self.num_epochs = 100
+        self.initial_lr = 1e-3

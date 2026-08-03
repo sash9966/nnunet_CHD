@@ -93,6 +93,21 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
   ⚠ Use a **grouped CV split** (all `<case>_*` in one fold) or validation leaks across a
   patient's own variants.
 
+- **Dataset080** `Dataset080_ClinicalCaseSanjibDetailed` — 3 expert-annotated clinical cases
+  (7-class LPS, same id scheme). The real deployment domain; too few to train alone.
+- **Dataset081** `Dataset081_ImageCHDplusClinical` — 071 + 080 with clinical **oversampled 8×**.
+  Split rule: **clinical is train-only (never in val); ImageCHD does the 5-fold val** — avoids
+  duplicate-leakage and uses all 3 clinical cases fully; real clinical eval is external inference.
+  `tools/build_dataset081_mix.py` + `scripts/CHD_Dataset081_mix.sh`.
+- **Clinical fine-tune** — `scripts/CHD_Dataset080_finetune.sh`: move 071's plans onto 080 (so the
+  architecture matches), then `nnUNetTrainerDA5_finetune` (100ep, lr 1e-3, `-f all`) initialised
+  from 071 fold-0 weights (`-pretrained_weights`).
+- **Clinical inference** — `scripts/CHD_predict_clinical.sh` resizes clinical sets to the ImageCHD
+  grid (`tools/resize_to_imagechd_grid.py`, 512×512×221) — empirically required for the model to
+  segment clinical CT — then predicts with each trained model into per-model subfolders. Key open
+  finding: the dominant clinical-inference failure was **input scale/grid presentation**, not the
+  weights; the resize front-end is the fix.
+
 ### Still planned
 - **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller
   clinician set may additionally drop missing-myo entirely and respace to the clinical
