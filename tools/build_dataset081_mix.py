@@ -25,7 +25,7 @@ and are LPS; aborts otherwise.
 Usage (cluster):
   python tools/build_dataset081_mix.py --nnunet-raw $nnUNet_raw \
     --imagechd-dataset Dataset071_ImageCHDClinicalOrientation \
-    --clinical-dataset Dataset080_ClinicalCaseSanjibDetailed \
+    --clinical-dataset Dataset080_ClincalCaseSanjibDetailed \
     --dup-factor 8 --overwrite
 """
 from __future__ import annotations
@@ -74,7 +74,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--nnunet-raw", default=os.environ.get("nnUNet_raw"))
     ap.add_argument("--imagechd-dataset", default="Dataset071_ImageCHDClinicalOrientation")
-    ap.add_argument("--clinical-dataset", default="Dataset080_ClinicalCaseSanjibDetailed")
+    ap.add_argument("--clinical-dataset", default="Dataset080_ClincalCaseSanjibDetailed")
     ap.add_argument("--target-id", type=int, default=81)
     ap.add_argument("--target-name", default="ImageCHDplusClinical")
     ap.add_argument("--dup-factor", type=int, default=8, help="clinical copies in training (incl. original)")
