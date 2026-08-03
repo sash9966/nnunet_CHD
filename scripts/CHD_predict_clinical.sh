@@ -6,7 +6,9 @@
 #  subfolders so you can tell which model produced which labels.
 #
 #     Phase A  resize -> ImageCHD grid (512x512x221) via tools/resize_to_imagechd_grid.py
-#     Phase B  for each AVAILABLE model (checkpoint exists) predict BOTH sets
+#     Phase B  for each AVAILABLE model, predict each image set in BOTH spaces:
+#                <model>__native   native-spacing input  (labels align to the original CT)
+#                <model>__grid512  resized 512x512x221 input (labels on the resized grid)
 #
 #  Models attempted (skipped automatically if not trained yet):
 #     ds071        Dataset071 DA5_200e, 5-fold ENSEMBLE, checkpoint_best   (quick win, no training)
@@ -21,7 +23,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=sastocke@stanford.edu
 #SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/CHD-predict-clinical_%j.out
@@ -87,14 +89,18 @@ for i in "${!TAGS[@]}"; do
   if [ ! -f "${CKPT}" ]; then
     echo "[${TAG}] not trained yet (${CKPT} missing) — skipping"; continue
   fi
-  echo "[${TAG}] predicting both sets"
-  predict_set "${CLIN_RESIZED}"   "${CLIN_PRED}/${TAG}"
-  predict_set "${FANWEI_RESIZED}" "${FANWEI_PRED}/${TAG}"
+  echo "[${TAG}] predicting native + grid512 for clinical + fanwei"
+  predict_set "${CLIN_SRC}"       "${CLIN_PRED}/${TAG}__native"
+  predict_set "${CLIN_RESIZED}"   "${CLIN_PRED}/${TAG}__grid512"
+  predict_set "${FANWEI_SRC}"     "${FANWEI_PRED}/${TAG}__native"
+  predict_set "${FANWEI_RESIZED}" "${FANWEI_PRED}/${TAG}__grid512"
 done
 
 echo "=============================================================="
-echo "DONE. Predictions:"
-echo "  clinical: ${CLIN_PRED}/<model>/"
-echo "  fanwei  : ${FANWEI_PRED}/<model>/"
-echo "Re-run after finetune080 / ds081 finish training to fill in those subfolders."
+echo "DONE. Predictions (traceable by folder suffix):"
+echo "  clinical: ${CLIN_PRED}/<model>__native/   and   ${CLIN_PRED}/<model>__grid512/"
+echo "  fanwei  : ${FANWEI_PRED}/<model>__native/  and   ${FANWEI_PRED}/<model>__grid512/"
+echo "  __native  = native-spacing input  (overlay on the ORIGINAL CT)"
+echo "  __grid512 = resized 512x512x221     (overlay on imagesTs_imagechd_grid)"
+echo "Re-run after finetune080 / ds081 finish training to fill in their subfolders."
 echo "=============================================================="
