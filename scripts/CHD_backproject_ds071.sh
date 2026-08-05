@@ -6,7 +6,7 @@
 #
 #  For each image set: grid512 prediction (predictions/ds071) --> resample back to
 #  the native grid (guided by the original image's geometry) --> largest-connected-
-#  component cleanup per label --> predictions/ds071__native_labels/<case>.nii.gz
+#  component cleanup per label --> predictions/ds071__grid2native_lcc/<case>.nii.gz
 #
 #  NOTE: this step is CPU-bound (scipy zoom + connected components); a GPU is
 #  allocated only because it's requested -- remove --gpus to schedule faster.
@@ -50,13 +50,13 @@ FANWEI="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw/Dataset012_Fanweidata"
 CLIN="/scratch/users/sastocke/nnunet_CHD/ClinicalImagesPHICleared"
 
 # Fanwei (the 50-case bootstrap set)
-backproject "${FANWEI}/predictions/ds071" "${FANWEI}/imagesTr" "${FANWEI}/predictions/ds071__native_labels"
+backproject "${FANWEI}/predictions/ds071" "${FANWEI}/imagesTr" "${FANWEI}/predictions/ds071__grid2native_lcc"
 # Clinical set
-backproject "${CLIN}/predictions/ds071"   "${CLIN}/imagesTs"   "${CLIN}/predictions/ds071__native_labels"
+backproject "${CLIN}/predictions/ds071"   "${CLIN}/imagesTs"   "${CLIN}/predictions/ds071__grid2native_lcc"
 
 echo "=============================================================="
 echo "DONE. Native-spacing, LCC'd seed labels:"
-echo "  ${FANWEI}/predictions/ds071__native_labels/"
-echo "  ${CLIN}/predictions/ds071__native_labels/"
+echo "  ${FANWEI}/predictions/ds071__grid2native_lcc/"
+echo "  ${CLIN}/predictions/ds071__grid2native_lcc/"
 echo "Overlay each on its ORIGINAL image (imagesTr/imagesTs *_0000.nii.gz), then send the keep/drop list."
 echo "=============================================================="
