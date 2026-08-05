@@ -119,3 +119,14 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
 - **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller
   clinician set may additionally drop missing-myo entirely and respace to the clinical
   acquisition; deferred until the LPS model is validated end-to-end.
+
+- **Dataset090** `Dataset090_ImageCHDPseudoCombined` — pseudo-label run 1. Combines Dataset071
+  (myo-intact ImageCHD, verified label-5 present) + **usable** Fanwei (Dataset012, 45) + usable
+  clinical (5) LCC native pseudo-labels (images from source datasets, labels from
+  `predictions/ds071__grid2native_lcc/`). Splits: ImageCHD does the 5-fold **val** (reusing
+  Dataset071's folds if present); pseudo cases are **train-only, never val** (noisy labels).
+  **quick_check** cases (13) excluded from run 1 (no per-case low-weight in stock nnU-Net) —
+  recorded in `split_config.{json,csv}`. **unusable** (5) + **Dataset080** held out in
+  `imagesTs` (images only, no labels). Built by `tools/build_dataset090_pseudolabel.py`
+  (existence + geometry + LPS + myo-intact + leak checks) / `scripts/CHD_Dataset090_pseudolabel.sh`.
+  Later stage: ignore PA/RA on the pseudo-labels.
