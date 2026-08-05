@@ -108,6 +108,13 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
   finding: the dominant clinical-inference failure was **input scale/grid presentation**, not the
   weights; the resize front-end is the fix.
 
+- **Clinical bootstrap loop** — `tools/backproject_predictions_to_native.py` maps grid512
+  predictions back onto each case's native CT grid (inverse of the index-space resize,
+  nearest-neighbour) + per-label largest-connected-component cleanup (drops speckle/stray
+  vessel bits for clean, low-false-positive seed labels). Output = native-FOV/spacing labels
+  aligned to the original CT → visually correct the few cases → add to Dataset080 → rebuild
+  081 / re-fine-tune → repeat. Round-trip verified (Dice ~1.0, geometry preserved).
+
 ### Still planned
 - **Respacing / all-myo variant** — Dataset071 does the orientation step only. A fuller
   clinician set may additionally drop missing-myo entirely and respace to the clinical
