@@ -74,7 +74,7 @@ def geom_match(a, b, atol=1e-3):
     return ga[0]==gb[0] and np.allclose(ga[1],gb[1],atol=atol) and np.allclose(ga[2],gb[2],atol=atol) and np.allclose(ga[3],gb[3],atol=atol)
 def symlink(src: Path, dst: Path):
     if dst.exists() or dst.is_symlink(): dst.unlink()
-    os.symlink(Path(src).resolve(), dst)
+    os.symlink(os.path.abspath(str(src)), dst)   # abspath, NOT resolve: keep the nnunet_CHD path
 
 
 def main():
@@ -160,25 +160,24 @@ def main():
     for cid in FANWEI_USABLE: add_pseudo(cid, FANWEI_IMG, FANWEI_LCC, args.fanwei_dataset)
     for cid in CLIN_USABLE:  add_pseudo(cid, CLIN_IMG, CLIN_LCC, "ClinicalImagesPHICleared")
 
-    # ---------------- quick-check: recorded only, EXCLUDED from run 1 ----------------
-    for cid in FANWEI_QUICK: rec(args.fanwei_dataset, cid, "quick_check", "optional_low_weight (excluded run1)", 0.3, "needs low-weight support")
-    for cid in CLIN_QUICK:   rec("ClinicalImagesPHICleared", cid, "quick_check", "optional_low_weight (excluded run1)", 0.3, "needs low-weight support")
-
-    # ---------------- held-out: unusable + Dataset080 -> imagesTs (image only) ----------------
+    # ---------------- held-out -> imagesTs (image only): unusable + quick_check + Dataset080 ----------------
+    # NOTE: quick_check are EXCLUDED from training (no labels used), but their images go to
+    # imagesTs so they get predicted with the trained model (the "remaining Fanwei" eval).
     ts_seen = set()
-    def add_test(cid, img_dir, src_name, bucket, notes):
+    def add_test(cid, img_dir, src_name, bucket, use, weight, notes):
         img = img_dir/f"{cid}_0000{FE}"
         if not img.is_file(): failures.append(f"[{bucket}] {cid}: missing image {img}"); return
-        if cid in ts_seen: rec(src_name, cid, bucket, "held_out_test (dup skipped)", 0.0, notes+"; dup basename"); return
+        if cid in ts_seen: rec(src_name, cid, bucket, use+" (dup skipped)", weight, notes+"; dup basename"); return
         symlink(img, dst/"imagesTs"/f"{cid}_0000{FE}"); ts_seen.add(cid)
-        rec(src_name, cid, bucket, "held_out_test / unlabeled", 0.0, notes)
-    for cid in FANWEI_UNUSABLE: add_test(cid, FANWEI_IMG, args.fanwei_dataset, "unusable", "unusable for myo-sensitive train")
-    for cid in CLIN_UNUSABLE:   add_test(cid, CLIN_IMG, "ClinicalImagesPHICleared", "unusable", "unusable for myo-sensitive train")
-    # Dataset080 images (expert cases) -> imagesTs
+        rec(src_name, cid, bucket, use, weight, notes)
+    for cid in FANWEI_UNUSABLE: add_test(cid, FANWEI_IMG, args.fanwei_dataset, "unusable", "held_out_test / unlabeled", 0.0, "unusable for myo-sensitive train")
+    for cid in CLIN_UNUSABLE:   add_test(cid, CLIN_IMG, "ClinicalImagesPHICleared", "unusable", "held_out_test / unlabeled", 0.0, "unusable")
+    for cid in FANWEI_QUICK:    add_test(cid, FANWEI_IMG, args.fanwei_dataset, "quick_check", "held_out_predict (opt low-weight later)", 0.3, "excluded from train run1")
+    for cid in CLIN_QUICK:      add_test(cid, CLIN_IMG, "ClinicalImagesPHICleared", "quick_check", "held_out_predict (opt low-weight later)", 0.3, "excluded from train run1")
     if ds080.is_dir():
         for f in sorted((ds080/"imagesTr").glob(f"*_0000{FE}")):
             cid = f.name[:-len(f"_0000{FE}")]
-            add_test(cid, ds080/"imagesTr", args.dataset080, "dataset080", "reserved expert test set")
+            add_test(cid, ds080/"imagesTr", args.dataset080, "dataset080", "held_out_test (expert GT)", 0.0, "reserved expert test set")
     else:
         failures.append(f"note: {ds080} not found — Dataset080 test cases not added")
 
@@ -218,8 +217,8 @@ def main():
     for b in ("imagechd","usable","quick_check","unusable","dataset080"):
         print(f"    {b:12s} {by_bucket.get(b,0)}")
     print(f"  imagesTr/labelsTr (TRAIN): {n_train}  = imagechd {len(imagechd_ids)} + usable {len(pseudo_train_ids)}")
-    print(f"  imagesTs (HELD-OUT test):  {len(ts_seen)}  (unusable + Dataset080; images only, no labels)")
-    print(f"  quick_check EXCLUDED from run 1: {len(FANWEI_QUICK)+len(CLIN_QUICK)} (in split_config only)")
+    print(f"  imagesTs (HELD-OUT, images only): {len(ts_seen)}  (unusable + quick_check + Dataset080)")
+    print(f"  quick_check (excluded from TRAIN run1; predicted as held-out): {len(FANWEI_QUICK)+len(CLIN_QUICK)}")
     print(f"  split config -> split_config.json / split_config.csv | folds -> split_meta.json")
     print(f"  NEXT: plan_and_preprocess -d {args.target_id}; then write splits (ImageCHD 5-fold val + pseudo in train)")
 

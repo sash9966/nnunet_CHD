@@ -55,7 +55,7 @@ def label_ids(path):
 def symlink(src: Path, dst: Path):
     if dst.exists() or dst.is_symlink():
         dst.unlink()
-    os.symlink(src.resolve(), dst)
+    os.symlink(os.path.abspath(str(src)), dst)   # abspath, not resolve: keep nnunet_CHD path
 
 
 def gather_cases(images_dir: Path, labels_dir: Path, fe: str):
@@ -83,7 +83,7 @@ def main():
 
     if not args.nnunet_raw:
         sys.exit("ERROR: set $nnUNet_raw or pass --nnunet-raw")
-    raw = Path(args.nnunet_raw).resolve()
+    raw = Path(args.nnunet_raw)   # keep the nnunet_CHD path; do not resolve symlinks into another tree
     chd = raw / args.imagechd_dataset
     clin = raw / args.clinical_dataset
     for p in (chd, clin):

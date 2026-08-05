@@ -127,7 +127,37 @@ for FOLD in "${FOLDS[@]}"; do
   nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER}" -p "${PLANS}" ${CONT}
 done
 
+# ---- Phase 3: held-out inference with the Dataset090 model (grid512 route) ----
+#   imagesTs = unusable + quick_check + Dataset080 (all held out from training).
+#   resize -> predict (Dataset090) -> resample back to native + LCC.  All under nnunet_CHD.
+HOLDOUT="${nnUNet_raw}/${DATASET_NAME}/imagesTs"
+HRESIZED="${nnUNet_raw}/${DATASET_NAME}/imagesTs_imagechd_grid"
+PREDROOT="${nnUNet_raw}/${DATASET_NAME}/predictions"
+GRID="${PREDROOT}/ds090__grid512"
+FINAL="${PREDROOT}/ds090__grid2native_lcc"
+FF="${FOLDS[0]}"; FOLDSTR="${FOLDS[*]}"
+MODELCKPT="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}/fold_${FF}/checkpoint_final.pth"
+if [ -f "${MODELCKPT}" ] && ls "${HOLDOUT}"/*.nii.gz >/dev/null 2>&1; then
+  echo "[Phase 3] held-out inference (resize -> predict ds090 -> backproject+LCC)"
+  mkdir -p "${PREDROOT}"
+  ls "${HRESIZED}"/*.nii.gz >/dev/null 2>&1 || \
+    python tools/resize_to_imagechd_grid.py --input "${HOLDOUT}" --output "${HRESIZED}" --overwrite
+  if ! ls "${GRID}"/*.nii.gz >/dev/null 2>&1; then
+    mkdir -p "${GRID}"
+    nnUNetv2_predict -i "${HRESIZED}" -o "${GRID}" -d "${DATASET_ID}" -c "${FULLRES}" \
+        -tr "${TRAINER}" -p "${PLANS}" -f ${FOLDSTR} -chk checkpoint_final.pth
+  fi
+  ls "${FINAL}"/*.nii.gz >/dev/null 2>&1 || \
+    python tools/backproject_predictions_to_native.py --pred-dir "${GRID}" --native-dir "${HOLDOUT}" \
+        --output-dir "${FINAL}" --overwrite
+  echo "[Phase 3] held-out native+LCC predictions -> ${FINAL}"
+else
+  echo "[Phase 3] skipped (model checkpoint or imagesTs missing)"
+fi
+
 echo "=============================================================="
-echo "DONE. Dataset090 pseudo-label run. Model: ${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}/"
-echo "Held-out test images (unusable + Dataset080) are in ${nnUNet_raw}/${DATASET_NAME}/imagesTs/ (predict later)."
+echo "DONE. Dataset090 pseudo-label run (everything under nnunet_CHD)."
+echo "  model:            ${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}/"
+echo "  held-out images:  ${HOLDOUT}/  (unusable + quick_check + Dataset080)"
+echo "  held-out labels:  ${FINAL}/  (native + LCC; overlay on the original CT)"
 echo "=============================================================="

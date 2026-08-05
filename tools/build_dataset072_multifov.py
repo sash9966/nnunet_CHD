@@ -118,7 +118,7 @@ def main():
 
     if not args.nnunet_raw:
         sys.exit("ERROR: set $nnUNet_raw or pass --nnunet-raw")
-    raw = Path(args.nnunet_raw).resolve()
+    raw = Path(args.nnunet_raw)   # keep the nnunet_CHD path; do not resolve symlinks into another tree
     src = raw / args.source_dataset
     if not (src / "imagesTr").is_dir() or not (src / "labelsTr").is_dir():
         sys.exit(f"ERROR: {src} missing imagesTr/labelsTr")
