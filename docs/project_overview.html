@@ -224,6 +224,7 @@
 <nav>
   <span class="brand">⬡ nnU-Net CHD</span>
   <a href="#overview">Overview</a>
+  <a href="#literature" style="color:var(--accent);font-weight:600;">★ Literature</a>
   <a href="#disease-landmarks" style="color:var(--accent);font-weight:600;">★ Disease Landmarks</a>
   <a href="#labels">Labels</a>
   <a href="#trainers">Trainers</a>
@@ -272,33 +273,53 @@
   <!-- ── LATEST CHANGE banner ── -->
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
-      <span class="badge badge-accent">★ Latest · 2026-07-20</span>
-      <h3 style="margin-left:10px;">Septal-focus ablation (Dataset070): Tversky <em>collapses</em> the class — oversampling wins</h3>
+      <span class="badge badge-accent">★ Latest · 2026-08-06</span>
+      <h3 style="margin-left:10px;">Clinical inference was a SCALE problem, not the model — pseudo-label bootstrap underway</h3>
     </div>
-    <p>Ran the four septal-focus arms on <code>Dataset070</code> (Fanwei flags, v3 VSD-anchored).
-    <strong>Both weight-1.0 Tversky arms suppressed the septal class to zero</strong> — 0/13 test cases
-    with any class-8 voxel, val pseudo-Dice rises then collapses to 0 (ep~115 solo, ep~40 with
-    oversample). The recall-biased term over-fires the tiny class, the base loss backlashes, and the
-    optimiser settles on predicting no defect. <strong>Oversample-only is the winner</strong>:
-    10/13 cases, val pseudo-Dice ~0.22 vs baseline ~0.16.
-    <strong>Fix (V2 arms):</strong> weight 0.1 + warmup (off until ep50) + linear ramp + softer bias
-    (α/β 0.4/0.6) → <code>nnUNetTrainerDA5Septal{TverskyV2,OversampleTverskyV2}_200epochs</code>,
-    added to the 051/062/070 ablation scripts (resubmit skips completed arms).
-    <br><span style="color:var(--muted);">Clinical track: <code>Dataset071_ImageCHDClinicalOrientation</code> — images from Dataset060 + clean 7-class labels from Dataset030 (no septal), physically reoriented RAS→LPS (<code>tools/build_dataset071_clinical_orientation.py</code>). The "train &amp; send to clinic" anatomy model.</span>
-    <br><span style="color:var(--muted);">Prior: v2 septal label (AVSD fix), Dataset050 (v1) vs Dataset051 (v2) A/B.</span>
-    <a href="#disease-landmarks">Jump to details →</a></p>
+    <p><strong>Biggest finding:</strong> the clinical-inference failure (chambers mislabeled, blobby, "worse than DA5")
+    was <strong>input scale / grid presentation — not the weights</strong>. The ImageCHD model segments clinical CT well
+    once each case is put on ImageCHD's grid. Working pipeline:
+    <code>resize → 512×512×221 → predict → resample back to native + largest-CC cleanup</code>
+    (<code>tools/resize_to_imagechd_grid.py</code> → <code>tools/backproject_predictions_to_native.py</code>).
+    Direct native-spacing inference still breaks.</p>
+    <p style="margin-top:6px;"><strong>Now running: pseudo-label bootstrap — <code>Dataset090</code>.</strong> ImageCHD
+    (<code>Dataset071</code>, myo-intact) + the <em>usable</em> Fanwei &amp; clinical cases with their LCC-cleaned
+    pseudo-labels (original RAS/LPS kept for diversity). Held-out buckets (unusable / quick-check / expert
+    <code>Dataset080</code>) go to <code>imagesTs</code>. Loop: predict → LCC → expert quick-fix → add → retrain →
+    re-predict the hard ones. <code>tools/build_dataset090_pseudolabel.py</code> · <code>scripts/CHD_Dataset090_pseudolabel.sh</code>.</p>
+    <p style="margin-top:6px;color:var(--muted);">Prior highlights: septal-focus ablation (Dataset070) — weight-1.0 Tversky <em>collapses</em> the tiny class (0/13); oversample-only wins (10/13, val Dice ~0.22); fixed low-weight+warmup "V2" arms added. And volumetric Dice badly <em>undersells</em> VSD (visually spot-on cases score ~0.3) → report detection + centroid + NSD, split VSD vs ASD.</p>
+    <p style="margin-top:6px;"><a href="#literature">Literature background ↓</a> · <a href="#disease-landmarks">Disease-landmark details →</a></p>
   </div>
 
   <!-- ── Current focus call-out ── -->
   <div class="card" style="border-left:3px solid var(--accent); margin-top:4px;">
-    <div class="card-head"><span class="dot dot-purple"></span><h3>Current focus — Stage 2 Approach A (Dataset041)</h3></div>
-    <p>Stage 1 produced binary whole-heart masks (Dataset040). The next step is to assign the 7 anatomical classes inside that mask. <strong>Approach A is the default first move:</strong> a 2-channel nnU-Net (CT + binary heart prior) trained as three variants on fold 0 to disentangle <em>topology loss</em> from <em>disease conditioning</em>.</p>
-    <p style="margin-top:6px;">
-      Anatomy + soft priors + AO-vs-PA feature menu: <code>experiments/wholeheart_decomposition/STAGE2_SPEC.md</code> + <code>anatomy_priors.yaml</code>.
-      Conversion: <code>experiments/wholeheart_decomposition/mask_constrained_nnunet/convert_to_mask_conditioned.py</code>.
-      Run: <code>sbatch scripts/CHD_Dataset041_mask_constrained.sh</code>.
-    </p>
-    <p style="margin-top:6px;color:var(--muted);">After Stage-2A: the plan is to sandwich SeqSeg (centerline tracing) with a disease-conditioned graph model (branch labelling). See the Stage-2 section and Review Findings for the full status.</p>
+    <div class="card-head"><span class="dot dot-purple"></span><h3>Current focus — clinical domain adaptation via pseudo-labels</h3></div>
+    <p>Grow a clinical-domain training set cheaply: run the ImageCHD model on Fanwei/clinical CT (via the resize→512³ route),
+    LCC-clean the back-projected labels, expert quick sign-off (5–10 min/case), add the good ones to training, retrain,
+    re-predict the hard ones. <code>Dataset090</code> is run 1 (full-weight noisy pseudo-labels); a later pass sets the
+    unreliable <strong>PA/RA</strong> classes to an <em>ignore</em> label so ImageCHD carries them (see Literature).</p>
+    <p style="margin-top:6px;color:var(--muted);">Held out for honest eval (never trained): the unusable cases, the quick-check cases, and the expert-annotated <code>Dataset080</code>.</p>
+    <p style="margin-top:6px;color:var(--muted);">Earlier track (paused): Stage-2 Approach A (Dataset041) — mask-constrained 7-class inside the whole-heart mask. See the Stage-2 section.</p>
+  </div>
+</section>
+
+<!-- ── LITERATURE BACKGROUND ── -->
+<section id="literature">
+  <div class="section-title"><span>★</span> Literature background — pseudo-labels &amp; partial supervision</div>
+  <div class="card">
+    <p style="color:var(--muted);margin-bottom:12px;">The clinical bootstrap loop (noisy pseudo-labels + ignoring the classes we can't trust) rests on two established lines: <strong>partial-label / partially-supervised segmentation</strong> — learn only the labeled/confident organs, ignore the rest — and <strong>self-training with uncertainty</strong> — trust confident pseudo-labels, distrust the rest. Reads (open later):</p>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Paper</th><th>Venue</th><th>Main takeaway for us</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://arxiv.org/abs/2007.03868" target="_blank">Marginal loss &amp; exclusion loss for partially supervised multi-organ segmentation</a></td><td>Shi et al., MedIA 2021</td><td>Fold unlabeled/uncertain organs into a merged "marginal" background so they contribute <em>no wrong gradient</em>. The theory behind <strong>setting PA/RA to <code>ignore</code></strong> on the pseudo-labels while still learning the confident classes.</td></tr>
+        <tr><td><a href="https://www.researchgate.net/publication/346092423_DoDNet_Learning_to_segment_multi-organ_and_tumors_from_multiple_partially_labeled_datasets" target="_blank">DoDNet: segment multi-organ/tumors from multiple partially labeled datasets</a></td><td>Zhang et al., CVPR 2021</td><td>One model across datasets that each label a different subset of organs (task-conditioned decoder). Same principle at <strong>dataset scale</strong> = ImageCHD (full labels) + clinical (partial/uncertain).</td></tr>
+        <tr><td><a href="https://www.sciencedirect.com/science/article/abs/pii/S1746809422006577" target="_blank">Uncertainty-aware pseudo-label &amp; consistency for semi-supervised medical segmentation</a></td><td>2022</td><td>Use model uncertainty to <em>rectify / down-weight</em> noisy pseudo-labels. The automated version of "keep the confident predictions, distrust the rest" in the correct-and-retrain loop.</td></tr>
+        <tr><td><a href="https://arxiv.org/pdf/2304.04441" target="_blank">Self-training with dual uncertainty for semi-supervised medical segmentation</a></td><td>2023</td><td>Dual (pixel + region) uncertainty to <em>select reliable</em> pseudo-labels. A confidence-guided upgrade path for choosing which cases/voxels to trust in later loop rounds.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="margin-top:12px;color:var(--muted);"><strong>Also relevant — confirmation bias:</strong> self-training reinforces its own errors if you feed back raw predictions. That's why the loop requires an <strong>expert quick-fix</strong> before adding a case and a <strong>frozen held-out test set</strong> that is never trained on.</p>
   </div>
 </section>
 
