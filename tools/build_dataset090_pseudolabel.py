@@ -67,7 +67,9 @@ FE = ".nii.gz"
 
 
 def orient(img): return sitk.DICOMOrientImageFilter_GetOrientationFromDirectionCosines(img.GetDirection())
-def label_ids(path): return {int(x) for x in np.unique(sitk.GetArrayViewFromImage(sitk.ReadImage(str(path))))}
+def label_ids(path):
+    img = sitk.ReadImage(str(path))                       # keep a ref!
+    return {int(x) for x in np.unique(sitk.GetArrayFromImage(img))}  # copy; View on a temp = use-after-free
 def has_myo(path): return int(MYO_ID) in label_ids(path)
 def geom(i): return (i.GetSize(), i.GetSpacing(), i.GetOrigin(), i.GetDirection())
 def geom_match(a, b, atol=1e-3):
@@ -126,7 +128,7 @@ def main():
     log("[d090] SimpleITK smoke test (env check)...")
     import tempfile
     _t = sitk.GetImageFromArray(np.zeros((4, 4, 4), np.uint8)); _t.SetSpacing((1.0, 1.0, 1.0))
-    _ = orient(_t); _ = {int(x) for x in np.unique(sitk.GetArrayViewFromImage(_t))}
+    _ = orient(_t); _ = {int(x) for x in np.unique(sitk.GetArrayFromImage(_t))}
     _tf = tempfile.mktemp(suffix=".nii.gz"); sitk.WriteImage(_t, _tf); _ = sitk.ReadImage(_tf); os.remove(_tf)
     log(f"[d090] SimpleITK OK ({sitk.Version.VersionString()}). Building...")
 
@@ -137,20 +139,19 @@ def main():
         shutil.rmtree(dst)                       # clean slate so a rebuild fully rewrites
     for sub in ("imagesTr","labelsTr","imagesTs"): (dst/sub).mkdir(parents=True, exist_ok=True)
 
-    # label scheme + myocardium id come from the BASE dataset's OWN dataset.json
+    # Output dataset.json label scheme = the BASE dataset's own dataset.json (JSON read, no sitk).
+    # We do NOT re-read the label VOXELS here — that use-after-free (GetArrayView on a temp Image)
+    # caused the segfault + false "no myo". Trust 071 imagesTr; nnU-Net's plan_and_preprocess
+    # --verify_dataset_integrity does robust per-case validation in Phase 1.
     base_labels = json.loads((chd/"dataset.json").read_text())["labels"]
-    allowed = {int(v) for v in base_labels.values()} | {0}
-    myo_id = next((int(v) for k, v in base_labels.items() if "myo" in str(k).lower()), 5)
-    if 8 in allowed:
-        log(f"[d090] WARNING: base {args.imagechd_dataset} has label id 8 (septal) — expected clean 7-class")
-    log(f"[d090] base label scheme: {base_labels}  | myocardium id = {myo_id}")
+    log(f"[d090] base label scheme: {base_labels}")
 
     rows = []   # split_config records
     def rec(src, cid, bucket, use, weight, notes=""):
         rows.append({"dataset_source":src,"case_id":cid,"bucket":bucket,
                      "intended_use":use,"label_weight":weight,"notes":notes})
 
-    imagechd_ids, pseudo_train_ids, no_myo_warn = [], [], []
+    imagechd_ids, pseudo_train_ids = [], []
 
     # ---------------- ImageCHD base (Dataset071) -> imagesTr/labelsTr ----------------
     chd_imgs = {}
@@ -160,43 +161,26 @@ def main():
         chd_imgs.setdefault(base, []).append(f)
     ids_chd = sorted(chd_imgs)
     if args.limit: ids_chd = ids_chd[: args.limit]
-    log(f"[d090] reading {len(ids_chd)} ImageCHD label(s)...")
-    for i, cid in enumerate(ids_chd, 1):
+    log(f"[d090] symlinking ALL {len(ids_chd)} ImageCHD case(s) from {args.imagechd_dataset}/imagesTr (as-is, no re-read)...")
+    for cid in ids_chd:
         chans = chd_imgs[cid]
         lab = chd/"labelsTr"/f"{cid}{FE}"
-        log(f"[imagechd {i}/{len(ids_chd)}] {cid}  label={lab}")
-        if not lab.is_file(): failures.append(f"[imagechd] {cid}: missing label"); continue
-        try:
-            ids = label_ids(lab)
-        except Exception as e:
-            failures.append(f"[imagechd] {cid}: label read error {e!r}"); continue
-        # Dataset071 imagesTr is expected myo-intact (no-myo cases are 071's imagesTs holdout).
-        # Pull ALL of 071 imagesTr per instruction; only WARN (don't skip/fail) if myo is missing.
-        no_myo = myo_id not in ids
-        if no_myo: no_myo_warn.append(cid); log(f"    (WARN: no myocardium id {myo_id} in this 071 imagesTr case)")
+        if not lab.is_file(): failures.append(f"[imagechd] {cid}: missing label {lab}"); continue
         for ch in chans: symlink(ch, dst/"imagesTr"/ch.name)
         symlink(lab, dst/"labelsTr"/f"{cid}{FE}")
         imagechd_ids.append(cid)
-        rec(args.imagechd_dataset, cid, "imagechd", "train+val (071 imagesTr)", 1.0, "no-myo!" if no_myo else "071 imagesTr")
+        rec(args.imagechd_dataset, cid, "imagechd", "train+val (071 imagesTr)", 1.0, "copied as-is from 071")
 
     # ---------------- usable pseudo-labels -> imagesTr/labelsTr ----------------
     def add_pseudo(cid, img_dir, lcc_dir, src_name):
         img = img_dir/f"{cid}_0000{FE}"; lab = lcc_dir/f"{cid}{FE}"
-        log(f"[usable] {cid}  img={img}")
+        log(f"[usable] {cid}")
         if not img.is_file(): failures.append(f"[usable] {cid}: missing image {img}"); return
         if not lab.is_file(): failures.append(f"[usable] {cid}: missing LCC label {lab}"); return
-        try:
-            im = sitk.ReadImage(str(img)); la = sitk.ReadImage(str(lab))
-            ids = {int(x) for x in np.unique(sitk.GetArrayViewFromImage(la))}
-            gm = geom_match(im, la); oi, ol = orient(im), orient(la)
-        except Exception as e:
-            failures.append(f"[usable] {cid}: read error {e!r}"); return
-        if not gm: failures.append(f"[usable] {cid}: image/label geometry mismatch"); return
-        if not ids <= allowed: failures.append(f"[usable] {cid}: label ids {sorted(ids)} outside base scheme"); return
-        # keep the ORIGINAL orientation (RAS/LPS mix preserved for diversity — do NOT reorient)
+        # symlink as-is: original orientation preserved (RAS/LPS mix for diversity), no re-read
         symlink(img, dst/"imagesTr"/f"{cid}_0000{FE}")
         symlink(lab, dst/"labelsTr"/f"{cid}{FE}")
-        pseudo_train_ids.append(cid); rec(src_name, cid, "usable", "pseudo_label_train", 1.0, f"LCC pseudo-label (orient {oi})")
+        pseudo_train_ids.append(cid); rec(src_name, cid, "usable", "pseudo_label_train", 1.0, "LCC pseudo-label")
     fu = FANWEI_USABLE[: args.limit] if args.limit else FANWEI_USABLE
     cu = CLIN_USABLE[: args.limit] if args.limit else CLIN_USABLE
     for cid in fu: add_pseudo(cid, FANWEI_IMG, FANWEI_LCC, args.fanwei_dataset)
@@ -261,13 +245,11 @@ def main():
     for b in ("imagechd","usable","quick_check","unusable","dataset080"):
         print(f"    {b:12s} {by_bucket.get(b,0)}")
     print(f"  imagesTr/labelsTr (TRAIN): {n_train}  = imagechd {len(imagechd_ids)} + usable {len(pseudo_train_ids)}")
-    print(f"  ImageCHD (ALL of {args.imagechd_dataset} imagesTr): {len(imagechd_ids)}  | of which NO myo id {myo_id}: {len(no_myo_warn)}")
-    if no_myo_warn:
-        print(f"     WARN no-myo (included per your instruction; 071 imagesTr expected myo-intact): "
-              f"{no_myo_warn[:12]}{' ...' if len(no_myo_warn)>12 else ''}")
-    print(f"  usable pseudo (LCC labels): {len(pseudo_train_ids)}  (original orientation kept — RAS/LPS mixed for diversity)")
+    print(f"  ImageCHD (ALL of {args.imagechd_dataset} imagesTr, symlinked as-is): {len(imagechd_ids)}")
+    print(f"  usable pseudo (LCC labels, orientation preserved RAS/LPS): {len(pseudo_train_ids)}")
     print(f"  imagesTs (HELD-OUT, images only): {len(ts_seen)}  (unusable + quick_check + Dataset080)")
     print(f"  quick_check (excluded from TRAIN run1; predicted as held-out): {len(FANWEI_QUICK)+len(CLIN_QUICK)}")
+    print(f"  NOTE: label voxels NOT re-read here — plan_and_preprocess --verify_dataset_integrity validates them.")
     print(f"  split config -> split_config.json / split_config.csv | folds -> split_meta.json")
     print(f"  NEXT: plan_and_preprocess -d {args.target_id}; then write splits (ImageCHD 5-fold val + pseudo in train)")
 
