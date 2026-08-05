@@ -75,6 +75,7 @@ def geom_match(a, b, atol=1e-3):
 def symlink(src: Path, dst: Path):
     if dst.exists() or dst.is_symlink(): dst.unlink()
     os.symlink(os.path.abspath(str(src)), dst)   # abspath, NOT resolve: keep the nnunet_CHD path
+def log(*a): print(*a, flush=True)   # flush so a segfault's last line = the file that crashed
 
 
 def main():
@@ -89,6 +90,7 @@ def main():
                     help="where the LCC'd native pseudo-labels live under each source")
     ap.add_argument("--target-id", type=int, default=90)
     ap.add_argument("--target-name", default="ImageCHDPseudoCombined")
+    ap.add_argument("--limit", type=int, default=None, help="cap ImageCHD + each bucket to N cases (debug)")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
 
@@ -118,6 +120,15 @@ def main():
         print("[d090] PRE-FLIGHT FAILURES:"); [print("  -",f) for f in failures]
         sys.exit("Fix the above (did you run CHD_backproject_ds071.sh to make the LCC labels?)")
 
+    # SimpleITK smoke test: if THIS crashes, the problem is the environment/libraries,
+    # NOT any data file (isolates env-vs-file before we touch real images).
+    log("[d090] SimpleITK smoke test (env check)...")
+    import tempfile
+    _t = sitk.GetImageFromArray(np.zeros((4, 4, 4), np.uint8)); _t.SetSpacing((1.0, 1.0, 1.0))
+    _ = orient(_t); _ = {int(x) for x in np.unique(sitk.GetArrayViewFromImage(_t))}
+    _tf = tempfile.mktemp(suffix=".nii.gz"); sitk.WriteImage(_t, _tf); _ = sitk.ReadImage(_tf); os.remove(_tf)
+    log(f"[d090] SimpleITK OK ({sitk.Version.VersionString()}). Building...")
+
     target_folder = f"Dataset{args.target_id:03d}_{args.target_name}"
     dst = raw / target_folder
     if dst.exists() and not args.overwrite: sys.exit(f"ERROR: {dst} exists (use --overwrite)")
@@ -136,36 +147,55 @@ def main():
         base = f.name[:-len(FE)]
         if base.endswith("_0000"): base = base[:-5]
         chd_imgs.setdefault(base, []).append(f)
-    for cid, chans in chd_imgs.items():
+    ids_chd = sorted(chd_imgs)
+    if args.limit: ids_chd = ids_chd[: args.limit]
+    log(f"[d090] reading {len(ids_chd)} ImageCHD label(s)...")
+    for i, cid in enumerate(ids_chd, 1):
+        chans = chd_imgs[cid]
         lab = chd/"labelsTr"/f"{cid}{FE}"
+        log(f"[imagechd {i}/{len(ids_chd)}] {cid}  label={lab}")
         if not lab.is_file(): failures.append(f"[imagechd] {cid}: missing label"); continue
-        if not has_myo(lab): failures.append(f"[imagechd] {cid}: NO myocardium(5) — 071 should be myo-intact"); continue
+        try:
+            myo = has_myo(lab)
+        except Exception as e:
+            failures.append(f"[imagechd] {cid}: label read error {e!r}"); continue
+        if not myo: failures.append(f"[imagechd] {cid}: NO myocardium(5) — 071 should be myo-intact"); continue
         for ch in chans: symlink(ch, dst/"imagesTr"/ch.name)
         symlink(lab, dst/"labelsTr"/f"{cid}{FE}")
         imagechd_ids.append(cid); rec(args.imagechd_dataset, cid, "imagechd", "train+val (clean, myo-intact)", 1.0, "Dataset071 base")
 
     # ---------------- usable pseudo-labels -> imagesTr/labelsTr ----------------
     def add_pseudo(cid, img_dir, lcc_dir, src_name):
-        img = img_dir/f"{cid}_0000{FE}"
-        lab = lcc_dir/f"{cid}{FE}"
+        img = img_dir/f"{cid}_0000{FE}"; lab = lcc_dir/f"{cid}{FE}"
+        log(f"[usable] {cid}  img={img}")
         if not img.is_file(): failures.append(f"[usable] {cid}: missing image {img}"); return
         if not lab.is_file(): failures.append(f"[usable] {cid}: missing LCC label {lab}"); return
-        im, la = sitk.ReadImage(str(img)), sitk.ReadImage(str(lab))
-        if orient(im)!="LPS" or orient(la)!="LPS": failures.append(f"[usable] {cid}: not LPS (img {orient(im)} lab {orient(la)})"); return
-        if not label_ids(lab) <= ALLOWED: failures.append(f"[usable] {cid}: label ids {label_ids(lab)} outside schema"); return
-        if not geom_match(im, la): failures.append(f"[usable] {cid}: image/label geometry mismatch"); return
+        try:
+            im = sitk.ReadImage(str(img)); la = sitk.ReadImage(str(lab))
+            oi, ol = orient(im), orient(la)
+            ids = {int(x) for x in np.unique(sitk.GetArrayViewFromImage(la))}
+            gm = geom_match(im, la)
+        except Exception as e:
+            failures.append(f"[usable] {cid}: read/geom error {e!r}"); return
+        if oi!="LPS" or ol!="LPS": failures.append(f"[usable] {cid}: not LPS (img {oi} lab {ol})"); return
+        if not ids <= ALLOWED: failures.append(f"[usable] {cid}: label ids {sorted(ids)} outside schema"); return
+        if not gm: failures.append(f"[usable] {cid}: image/label geometry mismatch"); return
         symlink(img, dst/"imagesTr"/f"{cid}_0000{FE}")
         symlink(lab, dst/"labelsTr"/f"{cid}{FE}")
         pseudo_train_ids.append(cid); rec(src_name, cid, "usable", "pseudo_label_train", 1.0, "LCC native pseudo-label")
-    for cid in FANWEI_USABLE: add_pseudo(cid, FANWEI_IMG, FANWEI_LCC, args.fanwei_dataset)
-    for cid in CLIN_USABLE:  add_pseudo(cid, CLIN_IMG, CLIN_LCC, "ClinicalImagesPHICleared")
+    fu = FANWEI_USABLE[: args.limit] if args.limit else FANWEI_USABLE
+    cu = CLIN_USABLE[: args.limit] if args.limit else CLIN_USABLE
+    for cid in fu: add_pseudo(cid, FANWEI_IMG, FANWEI_LCC, args.fanwei_dataset)
+    for cid in cu: add_pseudo(cid, CLIN_IMG, CLIN_LCC, "ClinicalImagesPHICleared")
 
     # ---------------- held-out -> imagesTs (image only): unusable + quick_check + Dataset080 ----------------
     # NOTE: quick_check are EXCLUDED from training (no labels used), but their images go to
     # imagesTs so they get predicted with the trained model (the "remaining Fanwei" eval).
     ts_seen = set()
+    log("[d090] staging held-out imagesTs (unusable + quick_check + Dataset080)...")
     def add_test(cid, img_dir, src_name, bucket, use, weight, notes):
         img = img_dir/f"{cid}_0000{FE}"
+        log(f"[test/{bucket}] {cid}")
         if not img.is_file(): failures.append(f"[{bucket}] {cid}: missing image {img}"); return
         if cid in ts_seen: rec(src_name, cid, bucket, use+" (dup skipped)", weight, notes+"; dup basename"); return
         symlink(img, dst/"imagesTs"/f"{cid}_0000{FE}"); ts_seen.add(cid)
@@ -224,4 +254,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush(); sys.stderr.flush()
+        raise
