@@ -93,7 +93,10 @@ def main():
     args = ap.parse_args()
 
     if not args.nnunet_raw: sys.exit("ERROR: set $nnUNet_raw or pass --nnunet-raw")
-    raw = Path(args.nnunet_raw).resolve()
+    # do NOT .resolve(): $nnUNet_raw may be a SYMLINK into another tree (e.g.
+    # nnunet_CHD/nnUNet_raw -> nnUNet/nnUNet_raw). Resolving would make raw.parent
+    # point at the wrong tree and break the sibling ClinicalImagesPHICleared path.
+    raw = Path(args.nnunet_raw)
     chd = raw / args.imagechd_dataset
     fanwei = raw / args.fanwei_dataset
     clin_root = Path(args.clinical_root) if args.clinical_root else (raw.parent / "ClinicalImagesPHICleared")

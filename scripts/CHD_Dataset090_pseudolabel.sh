@@ -57,7 +57,9 @@ if [ ! -f "${CKPT_DIR}/00_build.done" ]; then
   echo "[Phase 0] building ${DATASET_NAME}"
   python tools/build_dataset090_pseudolabel.py --nnunet-raw "${nnUNet_raw}" \
       --imagechd-dataset "${IMAGECHD_SRC}" --target-id "${DATASET_ID}" \
-      --target-name "ImageCHDPseudoCombined" --overwrite
+      --target-name "ImageCHDPseudoCombined" \
+      --clinical-root "${REPO}/ClinicalImagesPHICleared" \
+      --overwrite
   touch "${CKPT_DIR}/00_build.done"
 else
   echo "[Phase 0] build already done — skipping"
