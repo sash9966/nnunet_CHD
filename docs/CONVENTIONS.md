@@ -32,6 +32,14 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - **Dataset090_ImageCHDPseudoCombined** — pseudo-label run 1. Train = ALL of 071 `imagesTr` (~97)
   + usable Fanwei (45) + usable clinical (5) with **LCC pseudo-labels**. `imagesTs` = held-out
   (unusable 5 + quick-check 13 + Dataset080 3), **images only, no labels**.
+- **Dataset091_ImageCHDPseudoCombinedV2** — Dataset090 + 9 QC-approved ds090 pseudo-label cases
+  promoted from held-out→train (8 Fanwei: CT_052_7910, CT_528_0579, CT_584_09_no, CT_731_6,
+  CT_747_68, CT_754_49, CT_860_8, CT_914_49 + BAF007). Labels = `ds090__grid2native_lcc`.
+  **BAF004 deliberately excluded** (it's Dataset080 test). Built by `tools/build_dataset091_from_090.py`.
+- **A/B experiment:** train 090 & 091 full 5-fold (`CHD_Dataset090_train5fold.sh`,
+  `CHD_Dataset091_pseudolabel.sh`), then predict Dataset080 with both (per-fold + ensemble,
+  `CHD_predict_dataset080_compare.sh`, `--no-lcc`). 090 and 091 share identical ImageCHD val
+  folds (pseudo is train-only), so the comparison is clean. Dice/violin/heatmap done offline.
 
 ## Prediction output locations
 - **Preferred convention:** `<image-set>/predictions/<model>/` (e.g. `ClinicalImagesPHICleared/predictions/ds071__grid2native_lcc/`).
