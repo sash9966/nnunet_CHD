@@ -134,8 +134,9 @@ def main():
     # ---- 3) required checks ----
     train_ids = [r["case_id"] for r in rows]
     train_set = set(train_ids)
-    if len(train_ids) != len(train_set): errors.append(f"duplicate case ids in training: "
-        f"{sorted({c for c in train_ids if train_ids.count(c) > 1})}")
+    if len(train_ids) != len(train_set):
+        dups = sorted({c for c in train_ids if train_ids.count(c) > 1})
+        errors.append(f"duplicate case ids in training: {dups}")
     if not set(d091_ids) <= train_set: errors.append("some Dataset091 cases missing from training")
     if d080_ids and not set(d080_ids) <= train_set: errors.append("some Dataset080 cases missing from training")
     # excluded bad cases must not enter unless they legitimately came via 091/080
@@ -171,17 +172,17 @@ def main():
         "- Do NOT report Dataset080 Dice from this model as unbiased performance.\n")
 
     # ---- 7) build report ----
+    lt_counts = {t: sum(1 for r in rows if r["label_type"] == t)
+                 for t in sorted({r["label_type"] for r in rows})}
     (dst/"build_report.json").write_text(json.dumps(
         {"target": target, "n_train": n_train, "n_d091": len(d091_ids), "n_d080": len(d080_ids),
          "d080_cases": sorted(d080_ids), "excluded_bad_confirmed_absent": sorted(EXCLUDE_BAD),
-         "label_types": {t: sum(1 for r in rows if r["label_type"] == t)
-                         for t in sorted({r["label_type"] for r in rows})}}, indent=2))
+         "label_types": lt_counts}, indent=2))
 
     print(f"[d100] built {dst}")
     print(f"  training cases: {n_train}  = Dataset091 {len(d091_ids)} + Dataset080 {len(d080_ids)}")
     print(f"  Dataset080 added: {sorted(d080_ids)}")
-    print(f"  label_type counts: "
-          f"{ {t: sum(1 for r in rows if r['label_type']==t) for t in sorted({r['label_type'] for r in rows})} }")
+    print(f"  label_type counts: {lt_counts}")
     print(f"  excluded bad cases confirmed ABSENT: {sorted(EXCLUDE_BAD)}")
     print(f"  wrote dataset.json, manifest.csv, README.md, build_report.json")
     print(f"  NEXT: plan_and_preprocess -d {args.target_id}; train fold 'all'")

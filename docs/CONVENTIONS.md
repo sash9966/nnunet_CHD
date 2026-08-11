@@ -67,6 +67,11 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - Version datasets per cycle: `Dataset091`, `092`, …
 
 ## Gotchas / lessons
+- **Server Python is 3.10** (conda env `nnunet310`); local dev Python is 3.12. Do NOT use
+  Python-3.12-only f-string syntax: no nested `{ }` (dict/set/comprehension) inside a replacement
+  field, no nested same-type quotes, no backslash inside `{ }`. Compute into a variable first.
+  Local `py_compile` (3.12) will NOT catch these — they only fail on the server as a `SyntaxError`
+  (often misreported to a wrong line). Keep all repo Python 3.10-compatible.
 - **SimpleITK use-after-free:** never `sitk.GetArrayViewFromImage(sitk.ReadImage(...))` — the
   temporary Image is freed and the view dangles → garbage values + segfault. Keep a ref and use
   `GetArrayFromImage` (copy). (This caused Dataset090's segfault + false "no myo".)
