@@ -34,6 +34,10 @@ source /oak/stanford/groups/amarsden/sastocke/miniconda/etc/profile.d/conda.sh
 conda activate /scratch/users/sastocke/conda_envs/nnunet310
 hash -r
 
+# --- env guard: fail LOUDLY if the conda python didn't activate (old python -> f-string SyntaxError) ---
+echo "[env] python=$(command -v python)  $(python --version 2>&1)"
+python -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3,9) else 'FATAL: Python '+sys.version.split()[0]+' active, expected 3.10 from conda env nnunet310. The env did NOT activate (this is why the build SyntaxErrors at the first f-string). Fix the environment, do not touch the code.')"
+
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
