@@ -60,14 +60,27 @@ CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/clinic"
 mkdir -p "${CKPT_DIR}" "${REPO}/logs"
 cd "${REPO}"
 
-# ---- Phase 0: build ----
+# ---- Phase 0a: ensure Dataset091 exists (build it HERE in-job if missing — no GPU needed) ----
+# Dataset100 is built FROM Dataset091, so this script builds Dataset091 first if it isn't there.
+# Same promoted / excluded case lists as CHD_Dataset091_pseudolabel.sh.
+PROMOTED="CT_052_7910,CT_528_0579,CT_584_09_no,CT_731_6,CT_747_68,CT_754_49,CT_860_8,CT_914_49,BAF007"
+EXCLUDE="BAF004,CHIPS002,CHIPS016,BAF005,CT_704_49,CT_853_56_no,CT_881_8,CT_110_69,CT_335_058,CT_790_069,CT_793_0569_no"
+if [ ! -d "${nnUNet_raw}/${SRC_DATASET}/imagesTr" ]; then
+  echo "[Phase 0a] ${SRC_DATASET} not built yet — building it now (needed by ${DATASET_NAME})"
+  python tools/build_dataset091_from_090.py --nnunet-raw "${nnUNet_raw}" \
+      --src-dataset "Dataset090_ImageCHDPseudoCombined" --target-id 91 \
+      --target-name "ImageCHDPseudoCombinedV2" \
+      --promoted "${PROMOTED}" --exclude "${EXCLUDE}" --overwrite
+else echo "[Phase 0a] ${SRC_DATASET} already built — skipping"; fi
+
+# ---- Phase 0b: build Dataset100 (Dataset091 + all Dataset080) ----
 if [ ! -f "${CKPT_DIR}/00_build.done" ]; then
-  echo "[Phase 0] building ${DATASET_NAME} (Dataset091 + all ${D080_NAME})"
+  echo "[Phase 0b] building ${DATASET_NAME} (Dataset091 + all ${D080_NAME})"
   python tools/build_dataset100_finalclinic.py --nnunet-raw "${nnUNet_raw}" \
       --src-dataset "${SRC_DATASET}" --d080-name "${D080_NAME}" \
       --target-id "${DATASET_ID}" --target-name "FinalClinic" --overwrite
   touch "${CKPT_DIR}/00_build.done"
-else echo "[Phase 0] build already done — skipping"; fi
+else echo "[Phase 0b] build already done — skipping"; fi
 
 # ---- Phase 1: plan & preprocess (authoritative integrity check) ----
 if [ ! -f "${CKPT_DIR}/01_preprocess.done" ]; then
