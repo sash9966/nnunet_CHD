@@ -171,6 +171,12 @@ def main():
         "- Labels: 0=background 1=LV-BP 2=RV-BP 3=LA 4=RA 5=Myo 6=Ao 7=PA\n"
         "- Do NOT report Dataset080 Dice from this model as unbiased performance.\n")
 
+    # ---- 6b) split_meta for 5-fold training: ImageCHD does the val folds; the pseudo-labels
+    #         and Dataset080 clinic cases stay train-only in every fold (same idea as D091). ----
+    train_only = sorted(pseudo | set(d080_ids))
+    (dst/"split_meta.json").write_text(json.dumps(
+        {"imagechd": sorted(imagechd), "train_only": train_only, "d080": sorted(d080_ids)}, indent=1))
+
     # ---- 7) build report ----
     lt_counts = {t: sum(1 for r in rows if r["label_type"] == t)
                  for t in sorted({r["label_type"] for r in rows})}

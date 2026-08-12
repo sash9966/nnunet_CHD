@@ -41,12 +41,14 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
   `CHD_predict_dataset080_compare.sh`, `--no-lcc`). 090 and 091 share identical ImageCHD val
   folds (pseudo is train-only), so the comparison is clean. Dice/violin/heatmap done offline.
 - **Dataset100_FinalClinic** — CLINIC-FACING ALL-DATA model = Dataset091 + ALL Dataset080 cases
-  in TRAINING (Dataset080 intentionally included). Trained fold `all` (no held-out), same
-  trainer/plans as 091. Built by `tools/build_dataset100_finalclinic.py`, run by
-  `scripts/CHD_Dataset100_finalclinic.sh` (build→preprocess→train all→export weights→predict
-  clinic→QC overlays via `tools/make_qc_overlays.py`). **Deployment/qualitative review ONLY —
-  Dataset080 Dice from THIS model is NOT unbiased** (it's in training). Weights export:
-  `nnUNet_results/Dataset100_FinalClinic/CLINIC_MODEL_allData/`. Keep 090/091 as the unbiased eval.
+  in TRAINING (Dataset080 intentionally included). **Trained 5-fold (0-4) + ensemble** (robust;
+  ImageCHD does the val folds, pseudo-labels + Dataset080 stay train-only — same split as 091),
+  same trainer/plans as 091. Built by `tools/build_dataset100_finalclinic.py` (writes split_meta),
+  run by `scripts/CHD_Dataset100_finalclinic.sh` (build→preprocess→split→train 0-4→export 5-fold
+  weights→predict clinic with the ensemble→QC overlays via `tools/make_qc_overlays.py`).
+  **Deployment/qualitative review ONLY — Dataset080 Dice from THIS model is NOT unbiased** (it's in
+  training). Weights export: `nnUNet_results/Dataset100_FinalClinic/CLINIC_MODEL_5fold/` (predict
+  `-f 0 1 2 3 4`). Keep 090/091 as the unbiased eval.
 
 ## Prediction output locations
 - **Preferred convention:** `<image-set>/predictions/<model>/` (e.g. `ClinicalImagesPHICleared/predictions/ds071__grid2native_lcc/`).

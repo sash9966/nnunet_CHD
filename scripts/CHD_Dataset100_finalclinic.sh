@@ -50,7 +50,8 @@ DATASET_NAME="Dataset100_FinalClinic"
 SRC_DATASET="Dataset091_ImageCHDPseudoCombinedV2"
 D080_NAME="Dataset080_ClincalCaseSanjibDetailed"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"
-TRAINER="nnUNetTrainerDA5_200epochs"; FOLD="all"
+TRAINER="nnUNetTrainerDA5_200epochs"; FOLDS=(0 1 2 3 4)      # 5-fold + ensemble (robust clinic model)
+IMAGECHD_SRC="Dataset071_ImageCHDClinicalOrientation"; NUM_FOLDS=5; SPLIT_SEED=42
 
 # clinic review input (what to segment for qualitative feedback). Default: the Dataset080 clinic
 # cases. Point this at a fresh unlabeled clinic folder if you have one.
@@ -88,60 +89,100 @@ if [ ! -f "${CKPT_DIR}/01_preprocess.done" ]; then
   touch "${CKPT_DIR}/01_preprocess.done"
 else echo "[Phase 1] preprocess already done — skipping"; fi
 
-# ---- Phase 2: train fold 'all' (ALL-DATA, no held-out) ----
-OUT="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}/fold_${FOLD}"
-if [ -f "${OUT}/checkpoint_final.pth" ]; then
-  echo "[Phase 2] fold '${FOLD}' already trained — skipping"
-else
-  CONT=""; [ -f "${OUT}/checkpoint_latest.pth" ] && CONT="--c"
-  echo "[Phase 2] train ${TRAINER} fold '${FOLD}' ${CONT}"
-  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER}" -p "${PLANS}" ${CONT}
-fi
+# ---- Phase 1b: splits — ImageCHD 5-fold val (reuse 071 folds); pseudo + Dataset080 train-only ----
+if [ ! -f "${CKPT_DIR}/01b_splits.done" ]; then
+  echo "[Phase 1b] writing splits_final.json (ImageCHD val; clinic data train-only)"
+  python3 - "${DATASET_NAME}" "${IMAGECHD_SRC}" "${NUM_FOLDS}" "${SPLIT_SEED}" <<'PY'
+import json, os, sys, random
+from pathlib import Path
+raw = os.environ['nnUNet_raw']; pre = os.environ['nnUNet_preprocessed']
+ds, chd_src, K, seed = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+meta = json.loads(Path(raw, ds, 'split_meta.json').read_text())
+chd = set(meta['imagechd']); extra = sorted(meta['train_only'])
+src_splits = Path(pre, chd_src, 'splits_final.json')
+if src_splits.is_file():
+    base = json.loads(src_splits.read_text()); splits = []
+    for fold in base:
+        val = sorted(set(fold['val']) & chd)
+        train_chd = sorted(set(fold['train']) & chd)
+        covered = set(val) | set(train_chd)
+        train_chd = sorted(set(train_chd) | (chd - covered - set(val)))
+        splits.append({"train": sorted(train_chd + extra), "val": val})
+    print(f"[splits] reused {chd_src} folds ({len(base)}) for ImageCHD val")
+else:
+    print(f"[splits] WARNING: {src_splits} not found -> fresh {K}-fold over ImageCHD")
+    chd_sorted = sorted(chd); random.Random(seed).shuffle(chd_sorted)
+    folds = [chd_sorted[i::K] for i in range(K)]
+    splits = [{"train": sorted([c for c in chd_sorted if c not in set(folds[k])] + extra),
+               "val": sorted(folds[k])} for k in range(K)]
+for k, s in enumerate(splits):
+    assert not (set(s['val']) & set(extra)), f"fold {k}: train-only case in val!"
+    assert not (set(s['val']) & set(s['train'])), f"fold {k}: train/val overlap!"
+    assert set(s['val']) <= chd, f"fold {k}: non-ImageCHD case in val!"
+allval = set().union(*[set(s['val']) for s in splits])
+assert allval == chd, f"ImageCHD not fully validated once ({len(allval)} vs {len(chd)})"
+Path(pre, ds, 'splits_final.json').write_text(json.dumps(splits, indent=1))
+print(f"[splits] ImageCHD={len(chd)} train-only={len(extra)} folds={len(splits)}")
+print(f"[splits] per-fold (train,val): {[(len(s['train']), len(s['val'])) for s in splits]}")
+PY
+  touch "${CKPT_DIR}/01b_splits.done"
+else echo "[Phase 1b] split already written — skipping"; fi
 
-# ---- Phase 3: export clinic weights (self-contained model folder) ----
-EXPORT="${nnUNet_results}/${DATASET_NAME}/CLINIC_MODEL_allData"
-if [ -f "${OUT}/checkpoint_final.pth" ] && [ ! -f "${EXPORT}/fold_all/checkpoint_final.pth" ]; then
-  echo "[Phase 3] exporting clinic weights -> ${EXPORT}"
-  mkdir -p "${EXPORT}/fold_all"
-  cp "${OUT}/checkpoint_final.pth" "${EXPORT}/fold_all/"
-  MODELDIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
-  for f in plans.json dataset.json dataset_fingerprint.json; do
-    [ -f "${MODELDIR}/${f}" ] && cp "${MODELDIR}/${f}" "${EXPORT}/" || true
+# ---- Phase 2: train folds 0-4 (5-fold; ensemble used for the clinic model) ----
+MODELDIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
+for FOLD in "${FOLDS[@]}"; do
+  OUT="${MODELDIR}/fold_${FOLD}"
+  if [ -f "${OUT}/checkpoint_final.pth" ]; then echo "[skip] fold ${FOLD} complete"; continue; fi
+  CONT=""; [ -f "${OUT}/checkpoint_latest.pth" ] && CONT="--c"
+  echo "[Phase 2] train ${TRAINER} fold ${FOLD} ${CONT}"
+  nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER}" -p "${PLANS}" ${CONT}
+done
+ALL5=1; for FOLD in "${FOLDS[@]}"; do [ -f "${MODELDIR}/fold_${FOLD}/checkpoint_final.pth" ] || ALL5=0; done
+
+# ---- Phase 3: export clinic weights (all 5 folds -> ensemble) ----
+EXPORT="${nnUNet_results}/${DATASET_NAME}/CLINIC_MODEL_5fold"
+if [ "${ALL5}" = "1" ]; then
+  echo "[Phase 3] exporting 5-fold clinic weights -> ${EXPORT}"
+  for FOLD in "${FOLDS[@]}"; do
+    mkdir -p "${EXPORT}/fold_${FOLD}"; cp "${MODELDIR}/fold_${FOLD}/checkpoint_final.pth" "${EXPORT}/fold_${FOLD}/"
+  done
+  for j in plans.json dataset.json dataset_fingerprint.json; do
+    [ -f "${MODELDIR}/${j}" ] && cp "${MODELDIR}/${j}" "${EXPORT}/" || true
   done
   cat > "${EXPORT}/HOW_TO_USE.txt" <<EOF
-Clinic-facing ALL-DATA CHD model (Dataset100_FinalClinic).
+Clinic-facing ALL-DATA CHD model (Dataset100_FinalClinic) — 5-fold ENSEMBLE.
 Trained on ALL trusted data (Dataset091 + Dataset080). Qualitative review only —
 Dataset080 was in training, so its Dice from this model is NOT an unbiased estimate.
 
-Predict (input CT must be resized to the 512x512x221 ImageCHD grid first — see the repo
-tools/resize_to_imagechd_grid.py; direct native-spacing inference is unreliable):
+Predict (resize CT to the 512x512x221 ImageCHD grid first — tools/resize_to_imagechd_grid.py;
+direct native-spacing inference is unreliable):
   nnUNetv2_predict -i <resized_ct_dir> -o <out_dir> -d ${DATASET_ID} -c ${FULLRES} \\
-      -tr ${TRAINER} -p ${PLANS} -f all -chk checkpoint_final.pth
-then resample predictions back to native with tools/backproject_predictions_to_native.py.
+      -tr ${TRAINER} -p ${PLANS} -f 0 1 2 3 4 -chk checkpoint_final.pth
+then backproject to native with tools/backproject_predictions_to_native.py.
 Labels: 0=bg 1=LV-BP 2=RV-BP 3=LA 4=RA 5=Myo 6=Ao 7=PA.
 EOF
-else echo "[Phase 3] export exists or model missing — skipping"; fi
+else echo "[Phase 3] not all 5 folds trained yet — skipping export"; fi
 
-# ---- Phase 4: predict clinic review cases (resize -> predict -> backproject +LCC) ----
+# ---- Phase 4: predict clinic review cases with the 5-fold ENSEMBLE (resize -> predict -> backproject +LCC) ----
 RRESIZED="${nnUNet_raw}/${DATASET_NAME}/review_input_imagechd_grid"
 PREDROOT="${nnUNet_raw}/${DATASET_NAME}/predictions"
 GRID="${PREDROOT}/clinic_review__grid512"
 FINAL="${PREDROOT}/clinic_review__grid2native_lcc"
-if [ -f "${OUT}/checkpoint_final.pth" ] && ls "${REVIEW_INPUT}"/*_0000.nii.gz >/dev/null 2>&1; then
-  echo "[Phase 4] predicting clinic review cases from ${REVIEW_INPUT}"
+if [ "${ALL5}" = "1" ] && ls "${REVIEW_INPUT}"/*_0000.nii.gz >/dev/null 2>&1; then
+  echo "[Phase 4] predicting clinic review (5-fold ensemble) from ${REVIEW_INPUT}"
   mkdir -p "${PREDROOT}"
   ls "${RRESIZED}"/*_0000.nii.gz >/dev/null 2>&1 || \
     python tools/resize_to_imagechd_grid.py --input "${REVIEW_INPUT}" --output "${RRESIZED}" --overwrite
   if ! ls "${GRID}"/*.nii.gz >/dev/null 2>&1; then
     mkdir -p "${GRID}"
     nnUNetv2_predict -i "${RRESIZED}" -o "${GRID}" -d "${DATASET_ID}" -c "${FULLRES}" \
-        -tr "${TRAINER}" -p "${PLANS}" -f all -chk checkpoint_final.pth
+        -tr "${TRAINER}" -p "${PLANS}" -f 0 1 2 3 4 -chk checkpoint_final.pth
   fi
   ls "${FINAL}"/*.nii.gz >/dev/null 2>&1 || \
     python tools/backproject_predictions_to_native.py --pred-dir "${GRID}" \
         --native-dir "${REVIEW_INPUT}" --output-dir "${FINAL}" --overwrite
   echo "[Phase 4] clinic predictions (native +LCC) -> ${FINAL}"
-else echo "[Phase 4] skipped (model or review input missing)"; fi
+else echo "[Phase 4] skipped (not all 5 folds trained, or review input missing)"; fi
 
 # ---- Phase 5: QC overlay sheets ----
 QC="${PREDROOT}/clinic_review__qc"
@@ -151,9 +192,9 @@ if ls "${FINAL}"/*.nii.gz >/dev/null 2>&1; then
 else echo "[Phase 5] skipped (no predictions)"; fi
 
 echo "=============================================================="
-echo "DONE. Clinic-facing all-data model (Dataset100_FinalClinic)."
-echo "  weights (send to clinic): ${EXPORT}/"
-echo "  clinic predictions:       ${FINAL}/"
+echo "DONE. Clinic-facing all-data model (Dataset100_FinalClinic) — 5-fold ensemble."
+echo "  weights (send to clinic): ${EXPORT}/  (folds 0-4; predict with -f 0 1 2 3 4)"
+echo "  clinic predictions:       ${FINAL}/  (5-fold ensemble, native +LCC)"
 echo "  QC sheets:                ${QC}/index.html"
 echo "  REMINDER: Dataset080 is in TRAINING here — do NOT report its Dice as unbiased."
 echo "=============================================================="
