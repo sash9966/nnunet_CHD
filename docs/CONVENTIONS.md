@@ -27,8 +27,11 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - **Dataset071_ImageCHDClinicalOrientation** — LPS clean 7-class ImageCHD base; `imagesTr` = myo-intact, `imagesTs` = no-myo holdout.
 - **Dataset012_Fanweidata** — Fanwei cases (RAS).
 - **ClinicalImagesPHICleared** — clinical cases (LPS): `imagesTs/` + `predictions/`.
-- **Dataset080_ClincalCaseSanjibDetailed** — 3 expert-annotated clinical cases (BAF004, CHIPS002, CHIPS016).
-  **FROZEN TEST SET — never train on it.**
+- **Dataset080_ClinicalCaseSanjibDetailed** — expert-annotated clinical cases (grown 3 → 8:
+  BAF004, CHIPS001/002/005/006/007/010/016). **Note the correct spelling `Clinical`** (was long
+  misspelled `Clincal` in code; fixed 2026-08-12). **Frozen test set for the D090/D091 comparison —
+  never trained there.** D100 (clinic model) *does* intentionally train on it, so its Dice from
+  D100 is NOT unbiased.
 - **Dataset090_ImageCHDPseudoCombined** — pseudo-label run 1. Train = ALL of 071 `imagesTr` (~97)
   + usable Fanwei (45) + usable clinical (5) with **LCC pseudo-labels**. `imagesTs` = held-out
   (unusable 5 + quick-check 13 + Dataset080 3), **images only, no labels**.

@@ -54,10 +54,10 @@ def main():
     ap.add_argument("--nnunet-raw", default=os.environ.get("nnUNet_raw"))
     ap.add_argument("--src-dataset", default="Dataset091_ImageCHDPseudoCombinedV2")
     ap.add_argument("--d080-images", default=None,
-                    help="default: <raw>/Dataset080_ClincalCaseSanjibDetailed/imagesTr")
+                    help="default: <raw>/Dataset080_ClinicalCaseSanjibDetailed/imagesTr")
     ap.add_argument("--d080-labels", default=None,
-                    help="default: <raw>/Dataset080_ClincalCaseSanjibDetailed/labelsTr")
-    ap.add_argument("--d080-name", default="Dataset080_ClincalCaseSanjibDetailed")
+                    help="default: <raw>/Dataset080_ClinicalCaseSanjibDetailed/labelsTr")
+    ap.add_argument("--d080-name", default="Dataset080_ClinicalCaseSanjibDetailed")
     ap.add_argument("--target-id", type=int, default=100)
     ap.add_argument("--target-name", default="FinalClinic")
     ap.add_argument("--overwrite", action="store_true")

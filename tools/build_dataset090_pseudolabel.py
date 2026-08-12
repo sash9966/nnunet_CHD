@@ -88,7 +88,7 @@ def main():
     ap.add_argument("--fanwei-dataset", default="Dataset012_Fanweidata")
     ap.add_argument("--clinical-root", default=None,
                     help="ClinicalImagesPHICleared root (default: <raw>/../ClinicalImagesPHICleared)")
-    ap.add_argument("--dataset080", default="Dataset080_ClincalCaseSanjibDetailed")
+    ap.add_argument("--dataset080", default="Dataset080_ClinicalCaseSanjibDetailed")
     ap.add_argument("--lcc-subdir", default="predictions/ds071__grid2native_lcc",
                     help="where the LCC'd native pseudo-labels live under each source")
     ap.add_argument("--target-id", type=int, default=90)

@@ -47,7 +47,7 @@ export PYTHONUNBUFFERED=1
 REPO="/scratch/users/sastocke/nnunet_CHD"
 cd "${REPO}"
 
-D080="Dataset080_ClincalCaseSanjibDetailed"
+D080="Dataset080_ClinicalCaseSanjibDetailed"
 D080_IMG="${nnUNet_raw}/${D080}/imagesTr"          # expert-labelled cases (GT in labelsTr)
 D080_RESIZED="${nnUNet_raw}/${D080}/imagesTr_imagechd_grid"
 PREDROOT="${nnUNet_raw}/${D080}/predictions"

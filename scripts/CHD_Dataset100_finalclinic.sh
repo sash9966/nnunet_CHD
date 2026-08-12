@@ -48,7 +48,7 @@ REPO="/scratch/users/sastocke/nnunet_CHD"
 DATASET_ID=100
 DATASET_NAME="Dataset100_FinalClinic"
 SRC_DATASET="Dataset091_ImageCHDPseudoCombinedV2"
-D080_NAME="Dataset080_ClincalCaseSanjibDetailed"
+D080_NAME="Dataset080_ClinicalCaseSanjibDetailed"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"
 TRAINER="nnUNetTrainerDA5_200epochs"; FOLDS=(0 1 2 3 4)      # 5-fold + ensemble (robust clinic model)
 IMAGECHD_SRC="Dataset071_ImageCHDClinicalOrientation"; NUM_FOLDS=5; SPLIT_SEED=42

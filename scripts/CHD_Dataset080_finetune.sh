@@ -42,7 +42,7 @@ export PYTHONUNBUFFERED=1
 
 REPO="/scratch/users/sastocke/nnunet_CHD"
 CLIN_ID=80
-CLIN_NAME="Dataset080_ClincalCaseSanjibDetailed"
+CLIN_NAME="Dataset080_ClinicalCaseSanjibDetailed"
 SRC_NAME="Dataset071_ImageCHDClinicalOrientation"
 PLANS="nnUNetResEncUNetMPlans"
 FULLRES="3d_fullres"

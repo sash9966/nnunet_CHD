@@ -25,7 +25,7 @@ SRC_DIRS=(
   "${RAW}/Dataset071_ImageCHDClinicalOrientation/labelsTr"   # ImageCHD labels
   "${REPO}/ClinicalImagesPHICleared/imagesTs"                # clinical images
   "${REPO}/ClinicalImagesPHICleared/imagesTr"
-  "${RAW}/Dataset080_ClincalCaseSanjibDetailed/imagesTr"     # Dataset080 clinical test images (held-out in D090)
+  "${RAW}/Dataset080_ClinicalCaseSanjibDetailed/imagesTr"     # Dataset080 clinical test images (held-out in D090)
 )
 
 echo "======================================================================"

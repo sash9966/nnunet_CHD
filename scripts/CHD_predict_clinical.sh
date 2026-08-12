@@ -67,7 +67,7 @@ resize_set "${FANWEI_SRC}" "${FANWEI_RESIZED}"
 # ---- model table (parallel arrays) ----
 TAGS=(       "ds071"                              "finetune080"                        "ds081" )
 DSIDS=(      71                                   80                                   81 )
-DSNAMES=(    "Dataset071_ImageCHDClinicalOrientation" "Dataset080_ClincalCaseSanjibDetailed" "Dataset081_ImageCHDplusClinical" )
+DSNAMES=(    "Dataset071_ImageCHDClinicalOrientation" "Dataset080_ClinicalCaseSanjibDetailed" "Dataset081_ImageCHDplusClinical" )
 TRS=(        "nnUNetTrainerDA5_200epochs"         "nnUNetTrainerDA5_finetune"          "nnUNetTrainerDA5_200epochs" )
 FOLDSTRS=(   "0 1 2 3 4"                          "all"                                "0" )
 CHKS=(       "checkpoint_best.pth"                "checkpoint_final.pth"               "checkpoint_final.pth" )
