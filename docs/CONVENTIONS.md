@@ -67,6 +67,14 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - Version datasets per cycle: `Dataset091`, `092`, …
 
 ## Gotchas / lessons
+- **Conda env lives on /scratch (fast runtime) and CAN get purged.** Env:
+  `/scratch/users/sastocke/conda_envs/nnunet310` (Python 3.10). Sherlock purges `/scratch`; on
+  2026-08-12 the `python3.10` binary was deleted, leaving dangling `python`/`python3` symlinks so
+  `python` silently fell back to system 2.7 → every f-string build died at line 69. Do NOT move the
+  env to OAK (OAK I/O is too slow for training/dataloading). Instead: recreate on scratch at the
+  SAME path (no script edits), and keep a **tarball backup on OAK** for fast restore
+  (`tar czf` to OAK; `tar xzf` back to the same scratch path — same prefix, so it just works).
+  All run scripts have an env guard that aborts with a clear message if `python` isn't ≥3.9.
 - **Server Python is 3.10** (conda env `nnunet310`); local dev Python is 3.12. Do NOT use
   Python-3.12-only f-string syntax: no nested `{ }` (dict/set/comprehension) inside a replacement
   field, no nested same-type quotes, no backslash inside `{ }`. Compute into a variable first.

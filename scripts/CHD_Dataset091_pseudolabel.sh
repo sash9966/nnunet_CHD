@@ -33,6 +33,11 @@ source /oak/stanford/groups/amarsden/sastocke/miniconda/etc/profile.d/conda.sh
 conda activate /scratch/users/sastocke/conda_envs/nnunet310
 hash -r
 
+# --- env guard: fail LOUDLY if the env's python isn't active (a /scratch purge can delete the
+#     interpreter, leaving dangling symlinks -> `python` falls back to system 2.7 -> f-string SyntaxError) ---
+echo "[env] python=$(command -v python)  $(python --version 2>&1)"
+python -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3,9) else 'FATAL: Python '+sys.version.split()[0]+' active, expected 3.10 from conda env nnunet310. The env did not activate (likely a scratch purge deleted the interpreter). Recreate the env before running; do not edit the code.')"
+
 export nnUNet_raw="/scratch/users/sastocke/nnunet_CHD/nnUNet_raw"
 export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocessed"
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
