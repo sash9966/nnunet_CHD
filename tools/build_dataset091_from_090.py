@@ -38,6 +38,9 @@ def main():
     ap.add_argument("--promoted-label-dir", default=None,
                     help="dir with QC-approved labels for promoted cases "
                          "(default: <src>/predictions/ds090__grid2native_lcc)")
+    ap.add_argument("--promoted-image-dir", default=None,
+                    help="extra dir(s) (comma-sep) to search for promoted images, tried before the "
+                         "defaults (<src>/imagesTs, <raw>/Dataset012_Fanweidata/imagesTr)")
     ap.add_argument("--exclude", default="", help="comma-separated case ids that must NOT be promoted")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
@@ -73,12 +76,24 @@ def main():
     for f in sorted((src/"labelsTr").glob(f"*{FE}")): symlink(f, dst/"labelsTr"/f.name)
     base_train = len(list((dst/"labelsTr").glob(f"*{FE}")))
 
-    # ---- 2) promoted -> training (image from 090 imagesTs; label from ds090 QC dir) ----
+    # ---- 2) promoted -> training (image from D090/imagesTs OR the Fanwei/clinical source;
+    #         label from the ds090 QC dir) ----
+    img_search = []
+    if args.promoted_image_dir:
+        img_search += [Path(p) for p in args.promoted_image_dir.split(",") if p.strip()]
+    img_search += [src/"imagesTs", raw/"Dataset012_Fanweidata"/"imagesTr"]
+
+    def find_img(cid):
+        for d in img_search:
+            p = d/f"{cid}_0000{FE}"
+            if p.is_file(): return p
+        return None
+
     fails, promoted_ok = [], []
     for cid in promoted:
-        img = src/"imagesTs"/f"{cid}_0000{FE}"
+        img = find_img(cid)
         lab = label_dir/f"{cid}{FE}"
-        if not img.is_file(): fails.append(f"{cid}: image not in {src.name}/imagesTs ({img})"); continue
+        if img is None: fails.append(f"{cid}: image not found in {[str(d) for d in img_search]}"); continue
         if not lab.is_file(): fails.append(f"{cid}: QC label not found ({lab})"); continue
         symlink(img, dst/"imagesTr"/f"{cid}_0000{FE}")
         symlink(lab, dst/"labelsTr"/f"{cid}{FE}")
