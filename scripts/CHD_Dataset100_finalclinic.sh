@@ -66,8 +66,8 @@ cd "${REPO}"
 # Same promoted / excluded case lists as CHD_Dataset091_pseudolabel.sh.
 PROMOTED="CT_052_7910,CT_528_0579,CT_584_09_no,CT_731_6,CT_747_68,CT_754_49,CT_860_8,CT_914_49,BAF007"
 EXCLUDE="BAF004,CHIPS002,CHIPS016,BAF005,CT_704_49,CT_853_56_no,CT_881_8,CT_110_69,CT_335_058,CT_790_069,CT_793_0569_no"
-if [ ! -d "${nnUNet_raw}/${SRC_DATASET}/imagesTr" ]; then
-  echo "[Phase 0a] ${SRC_DATASET} not built yet — building it now (needed by ${DATASET_NAME})"
+if [ ! -f "${nnUNet_raw}/${SRC_DATASET}/dataset.json" ]; then    # dataset.json = only written on a COMPLETE build
+  echo "[Phase 0a] ${SRC_DATASET} not fully built yet — building it now (needed by ${DATASET_NAME})"
   python tools/build_dataset091_from_090.py --nnunet-raw "${nnUNet_raw}" \
       --src-dataset "Dataset090_ImageCHDPseudoCombined" --target-id 91 \
       --target-name "ImageCHDPseudoCombinedV2" \
