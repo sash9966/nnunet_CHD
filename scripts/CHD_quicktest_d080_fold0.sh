@@ -1,12 +1,16 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_quicktest_d080_fold0.sh
-#  QUICK fold-0 sanity check: does Dataset091 (pseudo-labels) already beat Dataset090
-#  on the held-out Dataset080, using only FOLD 0 of each? (Full 5-fold + ensemble comes
-#  later via CHD_predict_dataset080_compare.sh.)
+#  QUICK fold-0 sanity check on the held-out Dataset080, two questions at once:
+#    (1) does Dataset091 (pseudo-labels) beat Dataset090?
+#    (2) NATIVE inference vs the resize->512^3 route — now that D090/D091 train on
+#        native-FOV clinical/Fanwei data, does direct native inference already work?
+#  So we predict FOUR ways (D090/D091 x native/grid), all in D080's native geometry, and
+#  Dice them vs labelsTr (tools/dice_analysis_d080.py, matches dice_analysis.ipynb).
 #
-#  resize D080 -> 512^3 -> predict (D090 f0, D091 f0) -> backproject native (--no-lcc)
-#  -> Dice + violin + Δ-heatmap (tools/dice_analysis_d080.py, matches dice_analysis.ipynb).
+#    native: nnUNetv2_predict directly on D080/imagesTr  (nnU-Net resamples internally + back)
+#    grid  : resize -> 512^3 -> predict -> backproject to native (--no-lcc)
+#  Full 5-fold + ensemble comes later via CHD_predict_dataset080_compare.sh.
 # =============================================================================
 #SBATCH --job-name=D080-f0-quick
 #SBATCH --partition=bioe
@@ -49,18 +53,31 @@ mkdir -p "${PREDROOT}" "${GRIDROOT}"
 ls "${D080_IMG}"/*_0000.nii.gz >/dev/null 2>&1 || { echo "ERROR: no images in ${D080_IMG}"; exit 1; }
 ls "${D080_GT}"/*.nii.gz       >/dev/null 2>&1 || { echo "ERROR: no GT labels in ${D080_GT}"; exit 1; }
 
-# ---- resize D080 once ----
-ls "${RESIZED}"/*_0000.nii.gz >/dev/null 2>&1 || \
-  python tools/resize_to_imagechd_grid.py --input "${D080_IMG}" --output "${RESIZED}" --overwrite
+ckpt_of () { echo "${nnUNet_results}/$1/${TRAINER}__${PLANS}__${FULLRES}/fold_0/${CHK}"; }
 
-# predict_f0 <dataset_id> <full_dataset_name> <tag>
-predict_f0 () {
+# predict_native <dataset_id> <full_dataset_name> <tag>  — direct native inference (no resize)
+predict_native () {
   local DSID="$1" DSNAME="$2" TAG="$3"
-  local CKPT="${nnUNet_results}/${DSNAME}/${TRAINER}__${PLANS}__${FULLRES}/fold_0/${CHK}"
-  if [ ! -f "${CKPT}" ]; then echo "  [skip ${TAG}] fold 0 checkpoint missing: ${CKPT}"; return 0; fi
+  local CKPT; CKPT="$(ckpt_of "${DSNAME}")"
+  if [ ! -f "${CKPT}" ]; then echo "  [skip ${TAG}] fold 0 checkpoint missing"; return 0; fi
+  local FINAL="${PREDROOT}/${TAG}"
+  if ls "${FINAL}"/*.nii.gz >/dev/null 2>&1; then echo "  [done ${TAG}] exists"; return 0; fi
+  echo "  [predict ${TAG}] NATIVE  d=${DSID} fold 0"
+  mkdir -p "${FINAL}"
+  nnUNetv2_predict -i "${D080_IMG}" -o "${FINAL}" -d "${DSID}" -c "${FULLRES}" \
+      -tr "${TRAINER}" -p "${PLANS}" -f 0 -chk "${CHK}"
+}
+
+# predict_grid <dataset_id> <full_dataset_name> <tag>  — resize -> predict -> backproject
+predict_grid () {
+  local DSID="$1" DSNAME="$2" TAG="$3"
+  local CKPT; CKPT="$(ckpt_of "${DSNAME}")"
+  if [ ! -f "${CKPT}" ]; then echo "  [skip ${TAG}] fold 0 checkpoint missing"; return 0; fi
+  ls "${RESIZED}"/*_0000.nii.gz >/dev/null 2>&1 || \
+    python tools/resize_to_imagechd_grid.py --input "${D080_IMG}" --output "${RESIZED}" --overwrite
   local GRID="${GRIDROOT}/${TAG}" FINAL="${PREDROOT}/${TAG}"
   if ls "${FINAL}"/*.nii.gz >/dev/null 2>&1; then echo "  [done ${TAG}] exists"; return 0; fi
-  echo "  [predict ${TAG}] d=${DSID} fold 0"
+  echo "  [predict ${TAG}] GRID  d=${DSID} fold 0"
   mkdir -p "${GRID}"
   nnUNetv2_predict -i "${RESIZED}" -o "${GRID}" -d "${DSID}" -c "${FULLRES}" \
       -tr "${TRAINER}" -p "${PLANS}" -f 0 -chk "${CHK}"
@@ -68,20 +85,26 @@ predict_f0 () {
       --native-dir "${D080_IMG}" --output-dir "${FINAL}" --no-lcc --overwrite
 }
 
-predict_f0 90 "Dataset090_ImageCHDPseudoCombined"   "ds090_fold0"
-predict_f0 91 "Dataset091_ImageCHDPseudoCombinedV2" "ds091_fold0"
+predict_native 90 "Dataset090_ImageCHDPseudoCombined"   "ds090_native_f0"
+predict_native 91 "Dataset091_ImageCHDPseudoCombinedV2" "ds091_native_f0"
+predict_grid   90 "Dataset090_ImageCHDPseudoCombined"   "ds090_grid_f0"
+predict_grid   91 "Dataset091_ImageCHDPseudoCombinedV2" "ds091_grid_f0"
 
-# ---- Dice + plots (matches dice_analysis.ipynb) ----
+# ---- Dice + plots (matches dice_analysis.ipynb); baseline = D090 native ----
 python tools/dice_analysis_d080.py --gt-dir "${D080_GT}" \
-    --pred "Dataset090 (f0)=${PREDROOT}/ds090_fold0" \
-    --pred "Dataset091 (f0)=${PREDROOT}/ds091_fold0" \
-    --baseline "Dataset090 (f0)" \
+    --pred "D090 native=${PREDROOT}/ds090_native_f0" \
+    --pred "D091 native=${PREDROOT}/ds091_native_f0" \
+    --pred "D090 grid=${PREDROOT}/ds090_grid_f0" \
+    --pred "D091 grid=${PREDROOT}/ds091_grid_f0" \
+    --baseline "D090 native" \
     --out-dir "${PREDROOT}/dice_fold0"
 
 echo "=============================================================="
-echo "DONE (fold-0 quick test)."
-echo "  predictions: ${PREDROOT}/ds090_fold0/ , ds091_fold0/"
+echo "DONE (fold-0 quick test: native vs grid, D090 vs D091)."
+echo "  predictions: ${PREDROOT}/ds09{0,1}_{native,grid}_f0/"
 echo "  Dice + plots: ${PREDROOT}/dice_fold0/  (summary_*.csv, delta_median.csv,"
-echo "                dice_violin_090_vs_091.png, delta_heatmap.png)"
-echo "  NOTE: fold-0 only — rerun the full 5-fold ensemble comparison once all folds are in."
+echo "                dice_violin*.png, delta_heatmap.png)"
+echo "  READ: if 'D09x native' ~= or > 'D09x grid', native inference works -> drop the resize."
+echo "        if 'D091' > 'D090', the pseudo-labels are already helping."
+echo "  NOTE: fold-0 only — full 5-fold ensemble later via CHD_predict_dataset080_compare.sh."
 echo "=============================================================="

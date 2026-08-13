@@ -148,7 +148,7 @@ def main():
                        positions=xs + i * w - 0.4 + w / 2, widths=w * 0.9, labels=None)
         ax.set_xticks(xs); ax.set_xticklabels(classes)
     ax.set_ylim(0, 1.02)
-    ax.set_title("Dataset080 held-out Dice (fold 0): Dataset090 vs Dataset091")
+    ax.set_title("Dataset080 held-out Dice per class")
     fig.tight_layout(); fig.savefig(out / "dice_violin_090_vs_091.png", dpi=140); plt.close(fig)
 
     # ---- Δ-median heatmap ----
