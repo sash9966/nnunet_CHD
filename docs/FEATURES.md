@@ -24,6 +24,7 @@ Read this file at the start of any conversation to reconstruct full project stat
 | `centerline_aux.py` | `CenterlineAuxMixin` | Centerline-weighted CE on AO/PA (weight = 1+α·skeleton from GT, detached); on-the-fly soft skeleton; network unchanged |
 | `septal_focus.py` | `SeptalOversampleMixin` / `SeptalTverskyMixin` | Septal-defect ablation levers: bias fg patch sampling to the septal class (via `overwrite_class`), and FN-weighted Tversky on the septal class. Individually toggleable for ablation. |
 | `disease_landmark.py` | `DiseaseLandmarkMixin` | For `Dataset050_imageCHD_DiseaseLandmarks`: soft-Dice on derived hard labels (vsd/asd_orifice_proxy, resolved by name) with **positive-supervision only** (unverified absence never penalised) + optional great-vessel (AO∪PA) clDice; λ_disease 0.3, λ_vessel_cldice 0.1; self-disables if no derived labels; network unchanged |
+| `case_weight.py` | `CaseSamplingWeightMixin` | Per-case **sampling** weight (not loss): reads `case_weights.json` `{case_id: weight}` and sets the TRAIN loader's `sampling_probabilities` (aligned to `loader.indices`); val uniform. Same monkeypatch-during-`get_dataloaders` pattern as `SeptalOversampleMixin`. Self-disables (uniform) if no weight map. For the all-data clinic model (D100): up-weight expert/GT, down-weight noisy pseudo-labels. |
 
 Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.py` (`SoftRegionScaffoldLoss`, `BinaryVesselClDiceLoss`, `CenterlineWeightedCELoss`, `resolve_chd_label_ids`, `build_region_groups`) — unit-tested by `nnunetv2/tests/test_anatomy_losses.py` without importing a trainer.
 
@@ -74,6 +75,13 @@ Shared (trainer-free) loss math lives in `nnunetv2/training/loss/anatomy_losses.
 | `nnUNetTrainerDA5TopoCurriculum` + `_100e/_200e/_1000e` | `nnUNetTrainerDA5TopoCurriculum.py` |
 | `nnUNetTrainerDA5FiLMCurriculum` + `_100e/_200e/_500e` | `nnUNetTrainerDA5FiLMCurriculum.py` |
 | `nnUNetTrainerDA5FiLMTopoCurriculum` + `_100e/_200e/_500e/_1000e` | `nnUNetTrainerDA5FiLMTopoCurriculum.py` |
+
+### Case-Weighted (all-data clinic model, Dataset100)
+| Class | File |
+|---|---|
+| `nnUNetTrainerDA5CaseWeighted` + `_200epochs/_500epochs` | `nnUNetTrainerDA5CaseWeighted.py` |
+
+Per-case sampling weights from `case_weights.json` (written by `tools/build_dataset100_finalclinic.py`). Default D100 map: ImageCHD GT 1×, Dataset080 expert 3×, QC'd promoted 1×, usable clinical pseudo 0.5×, Fanwei pseudo 0.5×. Run via `scripts/CHD_Dataset100_weighted_all.sh` (fold `all`, 500 epochs, native clinic prediction). Literature: Ren 2018, Karimi 2020, Cui 2019, Zhang&Sabuncu 2018 (dashboard → Literature).
 
 ### Cascade Lowres Trainers
 | Class | Pairs with fullres |

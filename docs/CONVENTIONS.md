@@ -52,6 +52,14 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
   **Deployment/qualitative review ONLY — Dataset080 Dice from THIS model is NOT unbiased** (it's in
   training). Weights export: `nnUNet_results/Dataset100_FinalClinic/CLINIC_MODEL_5fold/` (predict
   `-f 0 1 2 3 4`). Keep 090/091 as the unbiased eval.
+- **Dataset100 CASE-WEIGHTED variant** — the canonical clinic model per the weighting discussion:
+  fold `all`, 500 epochs, trainer `nnUNetTrainerDA5CaseWeighted_500epochs` (mixin
+  `variants/mixins/case_weight.py`), run by `scripts/CHD_Dataset100_weighted_all.sh`. Per-case
+  **sampling** weights from `case_weights.json` (emitted by build_dataset100): ImageCHD GT 1×,
+  Dataset080 expert **3×**, QC'd promoted 1×, usable clinical pseudo 0.5×, Fanwei pseudo **0.5×**
+  (FOV/volume diversity, not label trust). Distinct trainer name → separate results folder from the
+  unweighted D100. Weighting is a deployment choice — D090/D091 stay unweighted. no-myo ImageCHD
+  cases are already excluded (they live in Dataset071/imagesTs, never pulled into 090/091/100).
 
 ## Prediction output locations
 - **Preferred convention:** `<image-set>/predictions/<model>/` (e.g. `ClinicalImagesPHICleared/predictions/ds071__grid2native_lcc/`).

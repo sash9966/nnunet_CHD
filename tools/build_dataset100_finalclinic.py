@@ -61,6 +61,12 @@ def main():
     ap.add_argument("--target-id", type=int, default=100)
     ap.add_argument("--target-name", default="FinalClinic")
     ap.add_argument("--overwrite", action="store_true")
+    # per-case sampling weights (written to case_weights.json for CaseSamplingWeightMixin)
+    ap.add_argument("--w-imagechd", type=float, default=1.0)
+    ap.add_argument("--w-d080", type=float, default=3.0)
+    ap.add_argument("--w-promoted", type=float, default=1.0)
+    ap.add_argument("--w-fanwei", type=float, default=0.5)
+    ap.add_argument("--w-clinical", type=float, default=0.5)
     args = ap.parse_args()
 
     if not args.nnunet_raw: sys.exit("ERROR: set $nnUNet_raw or pass --nnunet-raw")
@@ -80,11 +86,12 @@ def main():
     (dst/"imagesTr").mkdir(parents=True); (dst/"labelsTr").mkdir(parents=True)
 
     # label_type classification from Dataset091's split_meta
-    imagechd, pseudo = set(), set()
+    imagechd, pseudo, promoted = set(), set(), set()
     smp = src/"split_meta.json"
     if smp.is_file():
         sm = json.loads(smp.read_text())
         imagechd = set(sm.get("imagechd", [])); pseudo = set(sm.get("pseudo_train", []))
+        promoted = set(sm.get("promoted_from_090", []))
 
     rows = []              # manifest rows
     d091_ids, d080_ids = [], []
@@ -177,6 +184,23 @@ def main():
     (dst/"split_meta.json").write_text(json.dumps(
         {"imagechd": sorted(imagechd), "train_only": train_only, "d080": sorted(d080_ids)}, indent=1))
 
+    # ---- 6c) case_weights.json for CaseSamplingWeightMixin (per-case training sampling) ----
+    d080_set = set(d080_ids)
+
+    def _weight(cid):
+        if cid in d080_set:        return args.w_d080       # expert manual
+        if cid in imagechd:        return args.w_imagechd   # ImageCHD GT
+        if cid in promoted:        return args.w_promoted   # QC'd ds090 promoted
+        if cid.startswith("CT_"):  return args.w_fanwei     # Fanwei pseudo (uppercase CT_)
+        return args.w_clinical                              # other clinical pseudo
+
+    case_w = {r["case_id"]: _weight(r["case_id"]) for r in rows}
+    (dst/"case_weights.json").write_text(json.dumps(case_w, indent=1))
+    tier = {}
+    for w in case_w.values():
+        tier[w] = tier.get(w, 0) + 1
+    w_tiers = {f"{k}x": v for k, v in sorted(tier.items())}
+
     # ---- 7) build report ----
     lt_counts = {t: sum(1 for r in rows if r["label_type"] == t)
                  for t in sorted({r["label_type"] for r in rows})}
@@ -190,8 +214,9 @@ def main():
     print(f"  Dataset080 added: {sorted(d080_ids)}")
     print(f"  label_type counts: {lt_counts}")
     print(f"  excluded bad cases confirmed ABSENT: {sorted(EXCLUDE_BAD)}")
-    print(f"  wrote dataset.json, manifest.csv, README.md, build_report.json")
-    print(f"  NEXT: plan_and_preprocess -d {args.target_id}; train fold 'all'")
+    print(f"  case_weights.json tiers (weight -> n cases): {w_tiers}")
+    print(f"  wrote dataset.json, manifest.csv, README.md, build_report.json, case_weights.json")
+    print(f"  NEXT: plan_and_preprocess -d {args.target_id}; train fold 'all' with a CaseWeighted trainer")
 
 
 if __name__ == "__main__":

@@ -334,7 +334,7 @@
       </tbody>
     </table>
     </div>
-    <p style="margin-top:10px;color:var(--muted);"><strong>Proposed D100 per-case sampling weights:</strong> ImageCHD GT <code>1×</code> (reference) · Dataset080 expert <code>4×</code> (3–5× range) · QC'd promoted pseudo <code>1×</code> · usable clinical pseudo <code>0.5×</code> · Fanwei pseudo <code>0.2×</code> (≈ your "1/5", diversity not trust). Net gradient share ≈ ImageCHD 65% · D080 21% · promoted 6% · Fanwei 6% · clinical 2% → clean labels ~92%, Fanwei ~6%. <strong>Apply to D100 only</strong>; keep D090/D091 unweighted so the A/B comparison stays clean.</p>
+    <p style="margin-top:10px;color:var(--muted);"><strong>Proposed D100 per-case sampling weights:</strong> ImageCHD GT <code>1×</code> (reference) · Dataset080 expert <code>4×</code> (3–5× range) · QC'd promoted pseudo <code>1×</code> · usable clinical pseudo <code>0.5×</code> · Fanwei pseudo <code>0.2×</code> (≈ your "1/5", diversity not trust). Net gradient share ≈ ImageCHD 65% · D080 21% · promoted 6% · Fanwei 6% · clinical 2% → clean labels ~92%, Fanwei ~6%. <strong>Apply to D100 only</strong>; keep D090/D091 unweighted so the A/B comparison stays clean. <strong>IMPLEMENTED</strong> as <code>CaseSamplingWeightMixin</code> (per-case dataloader sampling) → trainer <code>nnUNetTrainerDA5CaseWeighted_500epochs</code>, run by <code>scripts/CHD_Dataset100_weighted_all.sh</code> (fold <code>all</code>). Final weights: D080 <strong>3×</strong>, Fanwei/clinical-pseudo 0.5×, ImageCHD &amp; QC'd-promoted 1×.</p>
   </div>
 </section>
 
