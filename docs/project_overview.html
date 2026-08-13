@@ -320,6 +320,21 @@
     </table>
     </div>
     <p style="margin-top:12px;color:var(--muted);"><strong>Also relevant — confirmation bias:</strong> self-training reinforces its own errors if you feed back raw predictions. That's why the loop requires an <strong>expert quick-fix</strong> before adding a case and a <strong>frozen held-out test set</strong> that is never trained on.</p>
+
+    <p style="margin-top:20px;margin-bottom:6px;font-weight:600;font-size:1.05em;">Sample weighting &amp; noisy / mixed-quality labels (for the all-data clinic model)</p>
+    <p style="color:var(--muted);margin-bottom:12px;">Why up-weight the trustworthy labels (Dataset080 expert, ImageCHD GT) and down-weight the noisy Fanwei pseudo-labels (kept mainly to add FOV / volume diversity, not for label trust):</p>
+    <div style="overflow-x:auto;">
+    <table>
+      <thead><tr><th>Paper</th><th>Venue</th><th>Takeaway for us</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://arxiv.org/abs/1803.09050" target="_blank">Learning to Reweight Examples for Robust Deep Learning</a></td><td>Ren et al., ICML 2018</td><td>Assign per-example weights so noisy/mislabeled samples contribute <em>less gradient</em>. Direct justification for <strong>down-weighting Fanwei pseudo-labels</strong> vs clean GT.</td></tr>
+        <tr><td><a href="https://arxiv.org/abs/1912.02911" target="_blank">Deep learning with noisy labels: techniques &amp; remedies in medical image analysis</a></td><td>Karimi et al., MedIA 2020</td><td>Medical-imaging-specific survey (reweighting, robust losses, label-quality as a first-class variable). Exactly our setting: mixed expert + pseudo labels in segmentation.</td></tr>
+        <tr><td><a href="https://arxiv.org/abs/1901.05555" target="_blank">Class-Balanced Loss Based on Effective Number of Samples</a></td><td>Cui et al., CVPR 2019</td><td>Returns from up-weighting a handful of scarce cases <em>saturate</em> ("effective number"). Why <strong>10× on 8 Dataset080 cases is too much</strong> (overfit); a moderate <strong>3–5×</strong> is the sweet spot.</td></tr>
+        <tr><td><a href="https://arxiv.org/abs/1805.07836" target="_blank">Generalized Cross Entropy Loss for Training DNNs with Noisy Labels</a></td><td>Zhang &amp; Sabuncu, NeurIPS 2018</td><td>A loss robust to label noise — an alternative/complement to case re-weighting for the noisy Fanwei/pseudo cases.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="margin-top:10px;color:var(--muted);"><strong>Proposed D100 per-case sampling weights:</strong> ImageCHD GT <code>1×</code> (reference) · Dataset080 expert <code>4×</code> (3–5× range) · QC'd promoted pseudo <code>1×</code> · usable clinical pseudo <code>0.5×</code> · Fanwei pseudo <code>0.2×</code> (≈ your "1/5", diversity not trust). Net gradient share ≈ ImageCHD 65% · D080 21% · promoted 6% · Fanwei 6% · clinical 2% → clean labels ~92%, Fanwei ~6%. <strong>Apply to D100 only</strong>; keep D090/D091 unweighted so the A/B comparison stays clean.</p>
   </div>
 </section>
 
