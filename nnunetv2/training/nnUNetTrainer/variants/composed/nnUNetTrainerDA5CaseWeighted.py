@@ -1,10 +1,10 @@
 """
 DA5 + per-case sampling weights (for the all-data clinic model, Dataset100).
 
-Draws trustworthy cases more often and noisy pseudo-labels less often, from a
-``case_weights.json`` written by tools/build_dataset100_finalclinic.py. Default D100 map:
-ImageCHD GT 1x, Dataset080 expert 3x, QC'd promoted 1x, usable clinical pseudo 0.5x,
-Fanwei pseudo 0.5x (kept for FOV/volume diversity, not label trust).
+Draws trustworthy cases more often and noisy pseudo-labels less often, from a per-dataset
+``case_weights.json`` = ``{case_id: weight}``. Example map: ground-truth 1x, expert-manual 3x,
+QC'd pseudo 1x, auxiliary pseudo-labels 0.5x (the latter kept for FOV/volume diversity, not
+label trust). If no case_weights.json is present the trainer samples uniformly (= plain DA5).
 
 MRO: CaseSamplingWeightMixin -> ComposableTrainerMixin -> nnUNetTrainerDA5 -> nnUNetTrainer.
 Train on fold 'all' for the deployment model; the weights only bias TRAIN sampling (val uniform).

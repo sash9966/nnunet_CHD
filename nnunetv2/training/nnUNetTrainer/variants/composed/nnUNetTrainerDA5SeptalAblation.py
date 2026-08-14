@@ -5,8 +5,7 @@ Isolates where a septal-detection gain comes from — sampling vs loss vs both:
   * nnUNetTrainerDA5SeptalTversky         — FN-weighted Tversky loss lever only
   * nnUNetTrainerDA5SeptalOversampleTversky — both combined
 
-Reference arms (already exist): nnUNetTrainerDA5 (anatomy+label8, no focus),
-nnUNetTrainerDA5DiseaseLandmark (soft-Dice + clDice). All same fold-0 split.
+Reference arm (already exists): nnUNetTrainerDA5 (anatomy+label8, no focus). Same fold-0 split.
 
 FIXED Tversky arms (V2), after the Dataset070 ablation showed the original
 weight=1.0 Tversky COLLAPSED class 8 to 0 predicted voxels (0/13 test cases vs
