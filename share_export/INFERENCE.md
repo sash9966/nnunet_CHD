@@ -34,24 +34,26 @@ Output masks are integer NIfTI (labels 0–7) on the input grid — load straigh
 
 ---
 
-## Route B — vanilla nnU-Net / 3D Slicer (no fork install), via retag
-The DA5 network **is** the stock `ResEncUNet`, so a DA5 checkpoint runs on stock nnU-Net once its
-recorded trainer name is changed to `nnUNetTrainer`. One-time conversion:
+## Route B — vanilla nnU-Net / 3D Slicer (NO fork install), via retag
+Any DA5-family model (incl. `DA5CaseWeighted`) is the stock `ResEncUNet`; the weighting only changes
+*training-time sampling* and has **zero effect on inference**. The only thing stock nnU-Net can't
+resolve is the custom trainer *name* recorded in the checkpoint. `nnUNetTrainerDA5` **is** a stock
+nnU-Net trainer, so we relabel to it. One-time conversion (run in any env with torch):
 ```bash
 python tools/retag_checkpoint_to_stock.py \
-  --model-dir /path/to/nnUNetTrainerDA5_500epochs__nnUNetResEncUNetMPlans__3d_fullres
-# -> writes a sibling: nnUNetTrainer__nnUNetResEncUNetMPlans__3d_fullres/
+  --model-dir /path/to/nnUNetTrainerDA5CaseWeighted_500epochs__nnUNetResEncUNetMPlans__3d_fullres
+# default --target-trainer nnUNetTrainerDA5  ->  sibling: nnUNetTrainerDA5__nnUNetResEncUNetMPlans__3d_fullres/
+# (use --target-trainer nnUNetTrainer for the absolute base if a target somehow lacks DA5)
 ```
-Then, in a **plain** `nnunetv2` install (e.g. the one bundled by the Slicer nnU-Net extension,
-version ~2.6.x):
+Then, in a **plain** nnU-Net (e.g. the one bundled by the Slicer nnU-Net extension):
 ```bash
 nnUNetv2_predict -i in -o out -d <ID> -c 3d_fullres \
-  -tr nnUNetTrainer -p nnUNetResEncUNetMPlans -f all -chk checkpoint_final.pth
+  -tr nnUNetTrainerDA5 -p nnUNetResEncUNetMPlans -f all -chk checkpoint_best.pth
 ```
-For the **Slicer nnU-Net extension**, point it at the retagged `nnUNetTrainer__…` model folder.
+For the **Slicer nnU-Net extension**, just point it at the retagged `nnUNetTrainerDA5__…` model folder.
 
 Notes:
-- Retag works only for trainers that don't change the architecture — **DA5** and
-  **DA5CaseWeighted** (the script refuses FiLM/Disease/CrossAttn models, which do change it).
-- The stock nnU-Net must be a compatible version (~2.6.x) so it builds the same ResEncUNet from
-  `plans.json`. If in doubt, use Route A.
+- Retag is valid only for trainers that don't change the architecture — **DA5** and
+  **DA5CaseWeighted** (the script refuses FiLM/Disease/CrossAttn, which do change it).
+- Stock nnU-Net should be a compatible version (~2.5–2.6) so it builds the same ResEncUNet from
+  `plans.json`. If it ever errors building the network, fall back to Route A.

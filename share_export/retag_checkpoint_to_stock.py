@@ -23,7 +23,6 @@ from pathlib import Path
 
 import torch
 
-STOCK = "nnUNetTrainer"
 ARCH_CHANGING = ("FiLM", "Disease", "CrossAttn", "MLPembedding")
 
 
@@ -31,8 +30,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model-dir", required=True,
                     help="a trained model folder: <TRAINER>__<PLANS>__<CONFIG>/")
-    ap.add_argument("--out-dir", default=None, help="output folder (default: sibling nnUNetTrainer__<PLANS>__<CONFIG>)")
+    ap.add_argument("--target-trainer", default="nnUNetTrainerDA5",
+                    help="trainer name to relabel to. Default nnUNetTrainerDA5 (a STOCK nnU-Net "
+                         "trainer; inference-identical, keeps the DA5 label). Use nnUNetTrainer for "
+                         "the absolute base if a target lacks DA5. Both need NO fork.")
+    ap.add_argument("--out-dir", default=None, help="output folder (default: sibling <target>__<PLANS>__<CONFIG>)")
     args = ap.parse_args()
+    STOCK = args.target_trainer
 
     src = Path(args.model_dir).resolve()
     if not src.is_dir():
