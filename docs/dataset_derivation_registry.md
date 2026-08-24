@@ -93,8 +93,11 @@ to 100) for a clean comparison. `BUDGET=200 sbatch ...` still runs the original 
   ⚠ Use a **grouped CV split** (all `<case>_*` in one fold) or validation leaks across a
   patient's own variants.
 
-- **Dataset080** `Dataset080_ClinicalCaseSanjibDetailed` — 3 expert-annotated clinical cases
-  (7-class LPS, same id scheme). The real deployment domain; too few to train alone.
+- **Dataset080** `Dataset080_ClinicalCaseSanjibDetailed` — expert-annotated clinical cases (7-class
+  LPS, same id scheme), **grown 3 → 8** (BAF004, CHIPS001/002/005/006/007/010/016) as of 2026-08.
+  The real deployment domain. **Frozen test set for the D090/D091 comparison** (never trained there);
+  **intentionally trained in the clinic model Dataset100** (so its Dice from D100 is NOT unbiased).
+  Note the corrected spelling `Clinical` (was long misspelled `Clincal` in code; fixed 2026-08-12).
 - **Dataset081** `Dataset081_ImageCHDplusClinical` — 071 + 080 with clinical **oversampled 8×**.
   Split rule: **clinical is train-only (never in val); ImageCHD does the 5-fold val** — avoids
   duplicate-leakage and uses all 3 clinical cases fully; real clinical eval is external inference.

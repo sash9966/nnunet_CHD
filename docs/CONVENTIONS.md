@@ -43,23 +43,29 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
   `CHD_Dataset091_pseudolabel.sh`), then predict Dataset080 with both (per-fold + ensemble,
   `CHD_predict_dataset080_compare.sh`, `--no-lcc`). 090 and 091 share identical ImageCHD val
   folds (pseudo is train-only), so the comparison is clean. Dice/violin/heatmap done offline.
-- **Dataset100_FinalClinic** — CLINIC-FACING ALL-DATA model = Dataset091 + ALL Dataset080 cases
-  in TRAINING (Dataset080 intentionally included). **Trained 5-fold (0-4) + ensemble** (robust;
-  ImageCHD does the val folds, pseudo-labels + Dataset080 stay train-only — same split as 091),
-  same trainer/plans as 091. Built by `tools/build_dataset100_finalclinic.py` (writes split_meta),
-  run by `scripts/CHD_Dataset100_finalclinic.sh` (build→preprocess→split→train 0-4→export 5-fold
-  weights→predict clinic with the ensemble→QC overlays via `tools/make_qc_overlays.py`).
-  **Deployment/qualitative review ONLY — Dataset080 Dice from THIS model is NOT unbiased** (it's in
-  training). Weights export: `nnUNet_results/Dataset100_FinalClinic/CLINIC_MODEL_5fold/` (predict
-  `-f 0 1 2 3 4`). Keep 090/091 as the unbiased eval.
-- **Dataset100 CASE-WEIGHTED variant** — the canonical clinic model per the weighting discussion:
-  fold `all`, 500 epochs, trainer `nnUNetTrainerDA5CaseWeighted_500epochs` (mixin
-  `variants/mixins/case_weight.py`), run by `scripts/CHD_Dataset100_weighted_all.sh`. Per-case
-  **sampling** weights from `case_weights.json` (emitted by build_dataset100): ImageCHD GT 1×,
-  Dataset080 expert **3×**, QC'd promoted 1×, usable clinical pseudo 0.5×, Fanwei pseudo **0.5×**
-  (FOV/volume diversity, not label trust). Distinct trainer name → separate results folder from the
-  unweighted D100. Weighting is a deployment choice — D090/D091 stay unweighted. no-myo ImageCHD
-  cases are already excluded (they live in Dataset071/imagesTs, never pulled into 090/091/100).
+- **Dataset100_FinalClinic** — CLINIC-FACING ALL-DATA model = Dataset091 + ALL Dataset080 cases in
+  TRAINING (Dataset080 intentionally included). **Deployment/qualitative review ONLY — Dataset080
+  Dice from THIS model is NOT unbiased** (it's in training). Built by
+  `tools/build_dataset100_finalclinic.py` (writes split_meta + `case_weights.json`). Same data pool
+  for both variants below; ImageCHD does the val folds, pseudo-labels + Dataset080 stay train-only —
+  same split logic as 091. no-myo ImageCHD cases are excluded (they live in Dataset071/imagesTs,
+  never pulled into 090/091/100). Keep 090/091 as the unbiased eval — D100 is never the eval model.
+  - **CANONICAL / SHIPPED = the CASE-WEIGHTED variant:** trainer
+    `nnUNetTrainerDA5CaseWeighted_500epochs` (mixin `variants/mixins/case_weight.py`), fold **`all`**,
+    **500 epochs**, run by `scripts/CHD_Dataset100_weighted_all.sh`. Per-case **sampling** weights
+    from `case_weights.json`: ImageCHD GT 1×, Dataset080 expert **3×**, QC'd promoted 1×, usable
+    clinical pseudo 0.5×, Fanwei pseudo **0.5×** (FOV/volume diversity, not label trust). This is the
+    model trained and sent to the clinical team. Weighting is a deployment choice — D090/D091 stay unweighted.
+  - **Alternate (earlier, unweighted) variant:** `nnUNetTrainerDA5_200epochs`, **5-fold (0–4) +
+    ensemble**, run by `scripts/CHD_Dataset100_finalclinic.sh`, export
+    `nnUNet_results/Dataset100_FinalClinic/CLINIC_MODEL_5fold/`. Kept for reference; not the shipped model.
+  - **Sharing to a stock nnU-Net / Slicer (clinical team):** the DA5/CaseWeighted network IS the stock
+    ResEncUNet (weighting changes only train-time sampling, not the architecture), and the trainer name
+    the predictor looks up lives in `checkpoint['trainer_name']` (NOT in plans.json/dataset.json). So
+    **retag the checkpoints to `nnUNetTrainerDA5`** (a stock trainer) with
+    `share_export/retag_checkpoint_to_stock.py --target-trainer nnUNetTrainerDA5`; ship the retagged
+    sibling folder — runs on stock nnU-Net, no fork. Keep the original CaseWeighted folder as provenance.
+    (There is NO 1000-epoch variant; only CaseWeighted _200/_500epochs exist.)
 
 ## Prediction output locations
 - **Preferred convention:** `<image-set>/predictions/<model>/` (e.g. `ClinicalImagesPHICleared/predictions/ds071__grid2native_lcc/`).

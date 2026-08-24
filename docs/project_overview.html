@@ -273,33 +273,36 @@
   <!-- ── LATEST CHANGE banner ── -->
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
-      <span class="badge badge-accent">★ Latest · 2026-08-06</span>
-      <h3 style="margin-left:10px;">Clinical inference was a SCALE problem, not the model — pseudo-label bootstrap underway</h3>
+      <span class="badge badge-accent">★ Latest · 2026-08-24</span>
+      <h3 style="margin-left:10px;">Clinic model shipped — <code>Dataset100</code> case-weighted all-data model, running on stock nnU-Net</h3>
     </div>
-    <p><strong>Biggest finding:</strong> the clinical-inference failure (chambers mislabeled, blobby, "worse than DA5")
-    was <strong>input scale / grid presentation — not the weights</strong>. The ImageCHD model segments clinical CT well
-    once each case is put on ImageCHD's grid. Working pipeline:
-    <code>resize → 512×512×221 → predict → resample back to native + largest-CC cleanup</code>
-    (<code>tools/resize_to_imagechd_grid.py</code> → <code>tools/backproject_predictions_to_native.py</code>).
-    Direct native-spacing inference still breaks.</p>
-    <p style="margin-top:6px;"><strong>Now running: pseudo-label bootstrap — <code>Dataset090</code>.</strong> ImageCHD
-    (<code>Dataset071</code>, myo-intact) + the <em>usable</em> Fanwei &amp; clinical cases with their LCC-cleaned
-    pseudo-labels (original RAS/LPS kept for diversity). Held-out buckets (unusable / quick-check / expert
-    <code>Dataset080</code>) go to <code>imagesTs</code>. Loop: predict → LCC → expert quick-fix → add → retrain →
-    re-predict the hard ones. <code>tools/build_dataset090_pseudolabel.py</code> · <code>scripts/CHD_Dataset090_pseudolabel.sh</code>.</p>
-    <p style="margin-top:6px;color:var(--muted);">Prior highlights: septal-focus ablation (Dataset070) — weight-1.0 Tversky <em>collapses</em> the tiny class (0/13); oversample-only wins (10/13, val Dice ~0.22); fixed low-weight+warmup "V2" arms added. And volumetric Dice badly <em>undersells</em> VSD (visually spot-on cases score ~0.3) → report detection + centroid + NSD, split VSD vs ASD.</p>
+    <p><strong>Where we are:</strong> the pseudo-label flywheel ran twice and produced a deployable clinic model.
+    <code>Dataset090</code> (run 1) → <code>Dataset091</code> (run 2: +9 QC-approved promoted pseudo-labels) →
+    <strong><code>Dataset100_FinalClinic</code></strong> = Dataset091 + all expert <code>Dataset080</code> cases, trained
+    <strong>all-data</strong>. Shipped model: <code>nnUNetTrainerDA5CaseWeighted_500epochs</code>, fold <code>all</code>,
+    with per-case <strong>sampling weights</strong> (Dataset080 expert 3×, ImageCHD/QC'd 1×, Fanwei/clinical pseudo 0.5×
+    — trust-weighted, diversity kept).</p>
+    <p style="margin-top:6px;"><strong>Sharing:</strong> DA5/CaseWeighted use the stock ResEncUNet (weighting changes only
+    train-time sampling), and the trainer name the predictor looks up lives in <code>checkpoint['trainer_name']</code>
+    — not in plans/dataset JSON. So <strong>retag checkpoints → <code>nnUNetTrainerDA5</code></strong>
+    (<code>share_export/retag_checkpoint_to_stock.py</code>) and the clinical team runs it on vanilla nnU-Net / 3D Slicer,
+    no fork. Full fork + training kit in <code>share_export/</code>.</p>
+    <p style="margin-top:6px;"><strong>The finding that unlocked it all:</strong> clinical inference failed on
+    <strong>input scale / grid presentation, not the weights</strong> — fix is
+    <code>resize → 512×512×221 → predict → backproject to native + largest-CC cleanup</code>.</p>
+    <p style="margin-top:6px;color:var(--muted);">Prior highlights: septal-focus ablation (Dataset070) — weight-1.0 Tversky <em>collapses</em> the tiny class (0/13); oversample-only wins (10/13, val Dice ~0.22). Volumetric Dice <em>undersells</em> VSD (visually spot-on cases ~0.3) → report detection + centroid + NSD.</p>
     <p style="margin-top:6px;"><a href="#literature">Literature background ↓</a> · <a href="#disease-landmarks">Disease-landmark details →</a></p>
   </div>
 
   <!-- ── Current focus call-out ── -->
   <div class="card" style="border-left:3px solid var(--accent); margin-top:4px;">
-    <div class="card-head"><span class="dot dot-purple"></span><h3>Current focus — clinical domain adaptation via pseudo-labels</h3></div>
-    <p>Grow a clinical-domain training set cheaply: run the ImageCHD model on Fanwei/clinical CT (via the resize→512³ route),
-    LCC-clean the back-projected labels, expert quick sign-off (5–10 min/case), add the good ones to training, retrain,
-    re-predict the hard ones. <code>Dataset090</code> is run 1 (full-weight noisy pseudo-labels); a later pass sets the
-    unreliable <strong>PA/RA</strong> classes to an <em>ignore</em> label so ImageCHD carries them (see Literature).</p>
-    <p style="margin-top:6px;color:var(--muted);">Held out for honest eval (never trained): the unusable cases, the quick-check cases, and the expert-annotated <code>Dataset080</code>.</p>
-    <p style="margin-top:6px;color:var(--muted);">Earlier track (paused): Stage-2 Approach A (Dataset041) — mask-constrained 7-class inside the whole-heart mask. See the Stage-2 section.</p>
+    <div class="card-head"><span class="dot dot-purple"></span><h3>Current focus — ship &amp; evaluate the clinic model</h3></div>
+    <p><strong>Dataset100</strong> is the deployment/qualitative-review model (all trusted data, case-weighted). It is
+    <em>not</em> an eval model — Dataset080 is in its training, so D100's Dataset080 Dice is NOT unbiased. The honest
+    number comes from the <strong>Dataset090 vs Dataset091</strong> A/B (both hold Dataset080 out): does adding QC'd
+    pseudo-labels improve held-out clinical Dice?</p>
+    <p style="margin-top:6px;color:var(--muted);">Dataset080 = expert clinical test set, grown 3 → 8 (BAF004 + CHIPS001/002/005/006/007/010/016). Frozen for the 090/091 comparison; intentionally trained in D100.</p>
+    <p style="margin-top:6px;color:var(--muted);">Next in the loop: set unreliable <strong>PA/RA</strong> classes to an <em>ignore</em> label on the pseudo-labels so ImageCHD carries them (partial-label; see Literature).</p>
   </div>
 </section>
 
