@@ -39,7 +39,7 @@ Per case, per target structure (component of the LCC mask). Implement in a `tool
 | **Medical SAM 2** (2408.00874) | 3D-as-video | key-slice prompt | same | alt SAM2-medical impl |
 | **SAM-Med3D** (2310.15161) | native 3D | few 3D point prompts | fg core points + negatives | fully-3D encoder; good 3D spatial context |
 | **SegVol** | 3D | bounding box (+text) | 3D bbox | zoom-out-zoom-in; box-only, no click correction |
-| **nnInteractive** | 3D (2D-slice prompts) | box/points/scribble | per-slice bbox / scribbles | nnU-Net-based promptable + auto-zoom |
+| **nnInteractive** (Isensee 2025, DKFZ) | 3D via 2D prompts | points, scribbles, box, **lasso** (confirmed) | ordered closed contour on a KEY slice | 2D interaction → 3D propagation; viewer = napari/MITK (+`nninteractive` pip API), NOT Slicer |
 | **DeepEdit** (2305.10655) | 3D | click editing on an initial seg | seed = LCC mask, then clicks | your reference; MONAI Label / 3D Slicer loop |
 | **SeqSeg** (2501.15712, Marsden lab) | 3D vessels | centerline seed point + tracing | vessel skeleton endpoints | local-segment vascular model construction; ideal for PA/aorta |
 | **HiPaS** (Nat Commun 2025) | 3D | — (auto) | (compare) | pulmonary artery-vein, non-contrast+CTPA, Dice 91.8% — vessel benchmark |
@@ -91,6 +91,10 @@ LCC blood-pool contours. Goal: retain **VSD septal-wall boundaries** by pinning 
   4. cap points/slice to bound the interaction budget.
 - **Pos/neg placement:** positives = eroded interior of each blood pool; negatives = opposing chamber
   within the septal band + myocardial wall → forces nnInteractive not to merge pools across the hole.
+- **nnInteractive lasso is 2D→3D (confirmed, Isensee 2025):** it propagates from a KEY slice, so the
+  adapter picks 1–few key slices (largest cross-section / interior-point slice) and passes the lasso
+  as an **ordered closed contour** (our tool already emits contour-ordered points). Viewer = napari /
+  MITK / `nninteractive` pip API (NOT Slicer). label_to_prompts.py emits ALL slices; the adapter selects.
 
 Then compare against **SAM-Med3D** (3D interior points) and **MedSAM2** (key-slice + propagate).
 
