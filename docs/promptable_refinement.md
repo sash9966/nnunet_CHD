@@ -98,4 +98,20 @@ Then compare against **SAM-Med3D** (3D interior points) and **MedSAM2** (key-sli
 - Contrast vs non-contrast CHD CT: which promptable models hold up (HiPaS handles both).
 - 2D-slice prompts (nnInteractive) vs true-3D prompts (SAM-Med3D) for branching vessels.
 - Lasso `k`, `d_mm`, curvature threshold, per-slice cap — tune on a few VSD + non-VSD cases.
-- `tools/label_to_prompts.py` = the shared prompt generator (bbox / interior point / centerline / adaptive lasso).
+- `tools/label_to_prompts.py` = the shared prompt generator (bbox / interior point / centerline / adaptive lasso). **BUILT.**
+
+## tools/label_to_prompts.py (built)
+Reads native-geometry LCC labels; per structure emits bbox, interior fg points (distance-transform
+peak + eroded-core), negative points (adjacent structures), **centerline + endpoints** for vessels
+(Aorta/Pulmonary), and **adaptive lasso** per axial slice for chambers. Outputs `<case>_prompts.json`
+(voxel + world coords) and, with `--write-qc`, a `<case>_prompts_qc.nii.gz` (10=fg,11=neg,12=centerline,
+13=lasso) to inspect in Slicer. Run:
+```
+python tools/label_to_prompts.py --labels-dir <lcc_labels> --out-dir <out> --write-qc \
+    [--structures LV-BP,RV-BP,Aorta,Pulmonary] [--lasso-k-mm 6 --lasso-band-mm 4 --lasso-curv-deg 35 --n-fg 3]
+```
+Centerline = skeletonize→graph tree-diameter path; **robust fallback** = centroid-along-longest-axis
+snapped in-mask (skimage `skeletonize` collapses perfectly even/symmetric prisms to 0 voxels — the
+fallback covers that and always returns an ordered centerline + 2 endpoints). Lasso density =
+uniform arc-length + densify where contour nears an adjacent chamber (septal band) + high-curvature;
+so VSD points emerge geometrically, no VSD flag. Verified on synthetic tubes + touching-chamber cases.
