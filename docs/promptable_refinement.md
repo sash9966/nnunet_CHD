@@ -68,9 +68,34 @@ bulk anatomy, promptable/vessel models to fix the hard structures, expert sign-o
 - RAPS-3D efficient interactive 3D seg: https://arxiv.org/abs/2507.07730
 - (verify refs) SegVol, nnInteractive, ScribblePrompt — cite exact arXiv when picked.
 
+## Phase 1 — start here (decided)
+Two models, split by structure type; SAM-Med3D / MedSAM2 come after as comparisons.
+
+**SeqSeg for the tubular vessels (PA, aorta).** Derive a centerline from the LCC vessel label
+(`skeletonize_3d` → longest path → ordered points); the **endpoints are the trace seeds** and double
+as the root cut-planes. Straightforward for aorta + PA.
+- RA/chambers are **blobs, not tubes** → a centerline is ill-defined. Use an **interior seed**
+  (distance-transform peak = most-interior voxel, guaranteed inside the label — the robust version of
+  "center of mass forced inside the mask") feeding a *promptable* model, not SeqSeg.
+- **Anatomy (get seeds on the right chamber):** pulmonary veins return to the **LEFT atrium**; the RA
+  receives **SVC/IVC (+ coronary sinus)**. So PV seeds → LA, caval seeds → RA.
+
+**nnInteractive for chambers + septal defects, via positive/negative lasso outlines** derived from the
+LCC blood-pool contours. Goal: retain **VSD septal-wall boundaries** by pinning the LV/RV pools apart.
+- **Adaptive lasso density (do NOT branch on VSD):** the defect IS where LV & RV contours come closest,
+  so key density on geometry and it emerges automatically:
+  1. base: uniform arc-length sampling every ~k mm;
+  2. **proximity densify**: where a contour point's distance to the *adjacent* chamber mask < `d_mm`
+     (the septal band), cut spacing to ~k/4 — collapses onto the defect when the pools nearly touch;
+  3. **curvature densify**: more points where contour curvature is high (the defect notch);
+  4. cap points/slice to bound the interaction budget.
+- **Pos/neg placement:** positives = eroded interior of each blood pool; negatives = opposing chamber
+  within the septal band + myocardial wall → forces nnInteractive not to merge pools across the hole.
+
+Then compare against **SAM-Med3D** (3D interior points) and **MedSAM2** (key-slice + propagate).
+
 ## Open questions
-- **"zigzag"** — no well-known segmentation model by that name found; likely a mis-transcription.
-  Candidates the user may mean: SegVol (zoom), a scribble/zig-zag interaction, or another tool — CONFIRM.
 - Contrast vs non-contrast CHD CT: which promptable models hold up (HiPaS handles both).
 - 2D-slice prompts (nnInteractive) vs true-3D prompts (SAM-Med3D) for branching vessels.
-- Which model per structure: chambers (SAM-Med3D/MedSAM2) vs vessels (SeqSeg/centerline) — likely a mix.
+- Lasso `k`, `d_mm`, curvature threshold, per-slice cap — tune on a few VSD + non-VSD cases.
+- `tools/label_to_prompts.py` = the shared prompt generator (bbox / interior point / centerline / adaptive lasso).
