@@ -38,9 +38,13 @@ REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 IMG_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr}"
 PROMPTS_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"     # from step 1
 OUT_DIR="${3:-/scratch/users/sastocke/chd_refinement/out/seqseg_ds090}"
-SEQSEG_NNUNET_WEIGHTS="/scratch/users/sastocke/chd_refinement/models/seqseg_nnunet"   # <-- FILL / CONFIRM
-SEQSEG_CONFIG="aorta_tutorial"                                                        # <-- CONFIRM
+SEQSEG_NNUNET_RESULTS="/scratch/users/sastocke/chd_refinement/seqseg_weights/aorta_ct_mr/nnUNet_results"  # Zenodo 15020477
+SEQSEG_CONFIG="aorta_tutorial"          # <-- CONFIRM the config for Dataset006_SEQAORTANDFEMOCT
+SEQSEG_MODEL="Dataset006_SEQAORTANDFEMOCT"   # CT aorta/femoral model (if SeqSeg asks for a dataset)
+SEQSEG_SCALE="0.1"                       # aortic model trained on cm; mm CT -> scale 0.1
 # ================
+echo "[seqseg] weights: $SEQSEG_NNUNET_RESULTS  (model $SEQSEG_MODEL, scale $SEQSEG_SCALE)"
+[ -d "$SEQSEG_NNUNET_RESULTS" ] && echo "  weights dir present" || echo "  !! weights dir MISSING — unzip Zenodo nnUNet_results.zip there"
 mkdir -p "$OUT_DIR" "$REPO/logs"
 
 echo "seqseg --help (so we can wire the exact seed flag):"
@@ -61,5 +65,6 @@ PY
 done
 
 echo ""
-echo "STOP: fill SEQSEG_NNUNET_WEIGHTS + SEQSEG_CONFIG + confirm the seed flag from --help,"
-echo "then I'll finalize the per-case 'seqseg -data_dir ... -nnunet_results_path ... -config_name ... <seed>' loop."
+echo "Documented call shape (finalize the SEED flag from --help above):"
+echo "  seqseg -data_dir <DIR> -nnunet_results_path $SEQSEG_NNUNET_RESULTS -config_name $SEQSEG_CONFIG -unit mm -scale $SEQSEG_SCALE <SEED_FLAG ...>"
+echo "STOP: paste 'seqseg --help' so I wire the exact seed flag; then I enable the per-case loop."
