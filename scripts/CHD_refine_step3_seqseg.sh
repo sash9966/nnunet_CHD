@@ -47,14 +47,19 @@ echo "[seqseg] weights: $SEQSEG_NNUNET_RESULTS  (model $SEQSEG_MODEL, scale $SEQ
 [ -d "$SEQSEG_NNUNET_RESULTS" ] && echo "  weights dir present" || echo "  !! weights dir MISSING — unzip Zenodo nnUNet_results.zip there"
 mkdir -p "$OUT_DIR" "$REPO/logs"
 
-echo "===== this SeqSeg uses SUBCOMMANDS (run/post/init/doctor/train/paths). Dumping sub-helps ====="
-for sub in run init doctor paths config; do
-  echo "----- seqseg ${sub} --help -----"
-  seqseg "${sub}" --help 2>&1 | head -60 || true
-  echo ""
-done
-echo "----- seqseg doctor (dependency + nnU-Net path check) -----"
-seqseg doctor 2>&1 | head -40 || true
+# SeqSeg reads its nnU-Net weights via the nnUNet_results env var (doctor showed it unset)
+export nnUNet_results="$SEQSEG_NNUNET_RESULTS"
+echo "[seqseg] nnUNet_results set -> $nnUNet_results"
+
+echo "===== SeqSeg 2.1.0 CLI probe (run single = one image + seeds.json) ====="
+echo "----- seqseg run single --help -----";  seqseg run single --help 2>&1 | head -80 || true
+echo "----- seqseg run batch  --help -----";  seqseg run batch  --help 2>&1 | head -40 || true
+echo "----- seqseg init dataset --help -----"; seqseg init dataset --help 2>&1 | head -40 || true
+echo "----- seeds.json TEMPLATE (scaffold a throwaway dataset and cat it) -----"
+SCAF="$OUT_DIR/_seed_schema_probe"; rm -rf "$SCAF"
+seqseg init dataset "$SCAF" 2>&1 | head -20 || seqseg init dataset --out "$SCAF" 2>&1 | head -20 || true
+find "$SCAF" -maxdepth 2 -name "seeds*.json" -exec sh -c 'echo "== {} =="; cat "{}"' \; 2>/dev/null || echo "  (adjust init syntax from its --help above)"
+echo "----- seqseg doctor (should now see the weights) -----"; seqseg doctor 2>&1 | tail -12 || true
 
 echo ""
 echo "Per-case seeds we generated (Aorta/Pulmonary endpoints, world coords):"
