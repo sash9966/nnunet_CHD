@@ -32,18 +32,28 @@ python -c "import nnInteractive, torch, nibabel, numpy; print('[env] nnInteracti
     || { echo "FATAL: nnInteractive env not importable"; exit 1; }
 
 REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
-# ===== EDIT: CT images, matching LCC labels, output dir =====
-IMG_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr}"       # <case>_0000.nii.gz
-LCC_DIR="${2:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc}"  # <case>.nii.gz
-OUT_DIR="${3:-/scratch/users/sastocke/chd_refinement/out/nninteractive_ds090}"
-# ===========================================================
+# ===== EDIT: LCC labels + output. CT images are searched across the source datasets below. =====
+LCC_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc}"  # <case>.nii.gz
+OUT_DIR="${2:-/scratch/users/sastocke/chd_refinement/out/nninteractive_ds090}"
+# native CT images live in the SOURCE datasets, not in Dataset090 — search all of these per case:
+IMG_DIRS=(
+  "$REPO/nnUNet_raw/Dataset012_Fanweidata/imagesTr"                       # Fanwei CT_*
+  "$REPO/ClinicalImagesPHICleared/imagesTs"                              # clinical BAF*/AVSD*
+  "$REPO/nnUNet_raw/Dataset080_ClinicalCaseSanjibDetailed/imagesTr"      # BAF004 / CHIPS*
+  "$REPO/nnUNet_raw/Dataset071_ImageCHDClinicalOrientation/imagesTr"     # ImageCHD ct_*
+  "$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr"
+  "$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTs"
+)
+# ==============================================================================================
 mkdir -p "$OUT_DIR/refined" "$OUT_DIR/prompts" "$REPO/logs"
+
+find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000.nii.gz" ] && { echo "$d/${c}_0000.nii.gz"; return 0; }; done; return 1; }
 
 shopt -s nullglob
 for lab in "$LCC_DIR"/*.nii.gz; do
   c=$(basename "$lab" .nii.gz)
-  img="$IMG_DIR/${c}_0000.nii.gz"
-  [ -f "$img" ] || { echo "[skip $c] no image $img"; continue; }
+  img="$(find_image "$c" || true)"
+  [ -n "$img" ] || { echo "[skip $c] no image in any IMG_DIRS"; continue; }
   out="$OUT_DIR/refined/${c}.nii.gz"
   [ -f "$out" ] && { echo "[done $c] exists"; continue; }
   echo "==== $c ===="

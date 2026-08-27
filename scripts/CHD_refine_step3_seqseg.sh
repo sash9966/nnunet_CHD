@@ -31,37 +31,52 @@ python -c "import seqseg" 2>/dev/null && echo "[env] seqseg import OK" || { echo
 
 REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 # ===== EDIT =====
-IMG_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr}"           # <case>_0000.nii.gz
-PROMPTS_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"             # step 1 output (<case>_prompts.json)
-OUT_DIR="${3:-/scratch/users/sastocke/chd_refinement/out/seqseg_ds090}"
-WROOT=/scratch/users/sastocke/chd_refinement/seqseg_weights/aorta_ct_mr
+PROMPTS_DIR="${1:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"             # step 1 output (<case>_prompts.json)
+OUT_DIR="${2:-/scratch/users/sastocke/chd_refinement/out/seqseg_ds090}"
+WSEARCH=/scratch/users/sastocke/chd_refinement/seqseg_weights          # search anywhere under here
+WROOT="$WSEARCH/aorta_ct_mr"                                            # download target if missing
 ZENODO_URL="https://zenodo.org/records/15020477/files/nnUNet_results.zip?download=1"
 TRAIN_DATASET=Dataset006_SEQAORTANDFEMOCT
 SCALE=0.1; UNIT=mm; VESSELS="Aorta Pulmonary"
+# native CT images live in the SOURCE datasets — search all per case:
+IMG_DIRS=(
+  "$REPO/nnUNet_raw/Dataset012_Fanweidata/imagesTr"
+  "$REPO/ClinicalImagesPHICleared/imagesTs"
+  "$REPO/nnUNet_raw/Dataset080_ClinicalCaseSanjibDetailed/imagesTr"
+  "$REPO/nnUNet_raw/Dataset071_ImageCHDClinicalOrientation/imagesTr"
+  "$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr"
+  "$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTs"
+)
+find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000.nii.gz" ] && { echo "$d/${c}_0000.nii.gz"; return 0; }; done; return 1; }
 # ================
 mkdir -p "$OUT_DIR" "$WROOT" "$REPO/logs"
 
-# --- auto-discover the model trainer folder (…__…__3d_fullres); auto-download weights if none ---
-find_model () { find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | grep -iE "006|aort|femo" | head -1; }
-MODEL_FOLDER="$(find_model || true)"
-[ -z "$MODEL_FOLDER" ] && MODEL_FOLDER="$(find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | head -1 || true)"
+# --- auto-discover the model trainer folder anywhere under WSEARCH; auto-download if none ---
+find_model () {
+  local m; m="$(find "$WSEARCH" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | grep -iE "006|aort|femo" | head -1)"
+  [ -z "$m" ] && m="$(find "$WSEARCH" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | head -1)"
+  echo "$m"
+}
+MODEL_FOLDER="$(find_model)"
 if [ -z "$MODEL_FOLDER" ]; then
-  echo "[weights] no model folder under $WROOT — downloading from Zenodo..."
+  echo "[weights] no model under $WSEARCH — downloading from Zenodo into $WROOT ..."
   ( cd "$WROOT" && curl -L "$ZENODO_URL" -o nnUNet_results.zip && unzip -o -q nnUNet_results.zip )
-  MODEL_FOLDER="$(find_model || true)"; [ -z "$MODEL_FOLDER" ] && MODEL_FOLDER="$(find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | head -1 || true)"
+  MODEL_FOLDER="$(find_model)"
 fi
-[ -n "$MODEL_FOLDER" ] || { echo "FATAL: could not find/download a *Trainer*__*__3d_fullres model under $WROOT"; \
-  echo "  contents:"; find "$WROOT" -maxdepth 4 -type d | head -30; exit 1; }
-export nnUNet_results="$WROOT"
-echo "[weights] model-folder = $MODEL_FOLDER"
+[ -n "$MODEL_FOLDER" ] || { echo "FATAL: no *Trainer*__*__3d_fullres model found/downloaded under $WSEARCH"; \
+  echo "  contents:"; find "$WSEARCH" -maxdepth 5 -type d | head -40; exit 1; }
+# nnUNet_results = the folder that CONTAINS DatasetXXX_* (two levels up from the trainer folder)
+export nnUNet_results="$(dirname "$(dirname "$MODEL_FOLDER")")"
+echo "[weights] model-folder   = $MODEL_FOLDER"
+echo "[weights] nnUNet_results = $nnUNet_results"
 
 ls "$PROMPTS_DIR"/*_prompts.json >/dev/null 2>&1 || { echo "FATAL: no step-1 prompts in $PROMPTS_DIR (run step 1 first)"; exit 1; }
 
 # --- per case, per vessel: build --seed args from step-1 seeds_world_r and trace ---
 for j in "$PROMPTS_DIR"/*_prompts.json; do
   c=$(basename "$j" _prompts.json)
-  img="$IMG_DIR/${c}_0000.nii.gz"
-  [ -f "$img" ] || { echo "[skip $c] no image $img"; continue; }
+  img="$(find_image "$c" || true)"
+  [ -n "$img" ] || { echo "[skip $c] no image in any IMG_DIRS"; continue; }
   for V in $VESSELS; do
     SEEDS=$(python - "$j" "$V" <<'PY'
 import json, sys
