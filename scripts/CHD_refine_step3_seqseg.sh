@@ -47,8 +47,14 @@ echo "[seqseg] weights: $SEQSEG_NNUNET_RESULTS  (model $SEQSEG_MODEL, scale $SEQ
 [ -d "$SEQSEG_NNUNET_RESULTS" ] && echo "  weights dir present" || echo "  !! weights dir MISSING — unzip Zenodo nnUNet_results.zip there"
 mkdir -p "$OUT_DIR" "$REPO/logs"
 
-echo "seqseg --help (so we can wire the exact seed flag):"
-seqseg --help 2>&1 | head -40 || true
+echo "===== this SeqSeg uses SUBCOMMANDS (run/post/init/doctor/train/paths). Dumping sub-helps ====="
+for sub in run init doctor paths config; do
+  echo "----- seqseg ${sub} --help -----"
+  seqseg "${sub}" --help 2>&1 | head -60 || true
+  echo ""
+done
+echo "----- seqseg doctor (dependency + nnU-Net path check) -----"
+seqseg doctor 2>&1 | head -40 || true
 
 echo ""
 echo "Per-case seeds we generated (Aorta/Pulmonary endpoints, world coords):"
