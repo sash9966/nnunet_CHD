@@ -10,7 +10,7 @@
 #  Send me the first job's log if anything throws.
 # =============================================================================
 #SBATCH --job-name=refine-nnI
-#SBATCH --partition=gpu
+#SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1

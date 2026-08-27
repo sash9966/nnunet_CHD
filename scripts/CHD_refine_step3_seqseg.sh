@@ -14,7 +14,7 @@
 #  Documented CLI (from the repo): seqseg -data_dir DIR -nnunet_results_path W -config_name CFG [-unit mm -scale 0.1]
 # =============================================================================
 #SBATCH --job-name=refine-seqseg
-#SBATCH --partition=gpu
+#SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --gpus=1

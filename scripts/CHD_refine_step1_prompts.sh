@@ -6,9 +6,10 @@
 #  Runs under the KNOWN-GOOD nnunet310 env (has numpy/scipy/skimage/networkx/nibabel).
 # =============================================================================
 #SBATCH --job-name=refine-prompts
-#SBATCH --partition=normal        # CPU-only step (no GPU); 'normal' avoids the gpu-partition --gpus requirement
+#SBATCH --partition=bioe
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=02:00:00
