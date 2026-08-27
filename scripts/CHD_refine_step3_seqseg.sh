@@ -1,17 +1,13 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_refine_step3_seqseg.sh  (workstream D — vessels: Aorta / Pulmonary)
-#  SeqSeg (numisveinsson/SeqSeg) traces vessels from a SINGLE SEED. We already produce seeds:
-#  label_to_prompts.py writes per-case endpoints (voxel + world) for Aorta/Pulmonary in
-#  <case>_prompts.json (run step 1 first). This script extracts those seeds and calls `seqseg`.
-#
-#  !!! NEEDS 3 THINGS I DON'T HAVE FROM YOUR ENV SUMMARY — fill them in / confirm:
-#    1. SEQSEG_NNUNET_WEIGHTS : SeqSeg's own trained nnU-Net VESSEL model (-nnunet_results_path).
-#                               (SeqSeg segments local patches with a vessel nnU-Net; not our CHD model.)
-#    2. SEQSEG_CONFIG         : a SeqSeg config name (e.g. aorta_tutorial) selecting units/params.
-#    3. SEED INGESTION        : how this SeqSeg build takes the seed (CLI flag vs a seed file).
-#                               Run `seqseg --help` and paste it to me; I'll wire the exact flags.
-#  Documented CLI (from the repo): seqseg -data_dir DIR -nnunet_results_path W -config_name CFG [-unit mm -scale 0.1]
+#  AUTONOMOUS SeqSeg tracing: self-discovers the nnU-Net model folder under the weights root
+#  (auto-downloads the Zenodo weights if absent), then runs `seqseg run single` per case per vessel,
+#  seeding from the endpoints (world coords + radius) produced by step 1 (label_to_prompts.py).
+#  SeqSeg 2.1.0 API:
+#    seqseg run single --image IMG --outdir OUT --model-folder <..__..__3d_fullres> \
+#        --nnunet-type 3d_fullres --train-dataset Dataset006_SEQAORTANDFEMOCT --scale 0.1 --unit mm \
+#        --seed X Y Z R [--seed X Y Z R ...]
 # =============================================================================
 #SBATCH --job-name=refine-seqseg
 #SBATCH --partition=bioe
@@ -20,7 +16,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=/scratch/users/sastocke/nnunet_CHD/logs/refine-seqseg_%j.out
 #SBATCH --error=/scratch/users/sastocke/nnunet_CHD/logs/refine-seqseg_%j.err
 
@@ -31,51 +27,61 @@ source /oak/stanford/groups/amarsden/sastocke/miniconda/etc/profile.d/conda.sh
 conda activate /scratch/users/sastocke/conda_envs/chd_seqseg310
 hash -r
 echo "[env] python=$(command -v python)  $(python --version 2>&1)"
-python -c "import seqseg" 2>/dev/null && echo "[env] seqseg import OK" || echo "[env] (seqseg imports as CLI? check 'seqseg --help')"
+python -c "import seqseg" 2>/dev/null && echo "[env] seqseg import OK" || { echo "FATAL: seqseg not importable"; exit 1; }
 
 REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 # ===== EDIT =====
-IMG_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr}"
-PROMPTS_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"     # from step 1
+IMG_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTr}"           # <case>_0000.nii.gz
+PROMPTS_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"             # step 1 output (<case>_prompts.json)
 OUT_DIR="${3:-/scratch/users/sastocke/chd_refinement/out/seqseg_ds090}"
-SEQSEG_NNUNET_RESULTS="/scratch/users/sastocke/chd_refinement/seqseg_weights/aorta_ct_mr/nnUNet_results"  # Zenodo 15020477
-SEQSEG_CONFIG="aorta_tutorial"          # <-- CONFIRM the config for Dataset006_SEQAORTANDFEMOCT
-SEQSEG_MODEL="Dataset006_SEQAORTANDFEMOCT"   # CT aorta/femoral model (if SeqSeg asks for a dataset)
-SEQSEG_SCALE="0.1"                       # aortic model trained on cm; mm CT -> scale 0.1
+WROOT=/scratch/users/sastocke/chd_refinement/seqseg_weights/aorta_ct_mr
+ZENODO_URL="https://zenodo.org/records/15020477/files/nnUNet_results.zip?download=1"
+TRAIN_DATASET=Dataset006_SEQAORTANDFEMOCT
+SCALE=0.1; UNIT=mm; VESSELS="Aorta Pulmonary"
 # ================
-echo "[seqseg] weights: $SEQSEG_NNUNET_RESULTS  (model $SEQSEG_MODEL, scale $SEQSEG_SCALE)"
-[ -d "$SEQSEG_NNUNET_RESULTS" ] && echo "  weights dir present" || echo "  !! weights dir MISSING — unzip Zenodo nnUNet_results.zip there"
-mkdir -p "$OUT_DIR" "$REPO/logs"
+mkdir -p "$OUT_DIR" "$WROOT" "$REPO/logs"
 
-# SeqSeg reads its nnU-Net weights via the nnUNet_results env var (doctor showed it unset)
-export nnUNet_results="$SEQSEG_NNUNET_RESULTS"
-echo "[seqseg] nnUNet_results set -> $nnUNet_results"
+# --- auto-discover the model trainer folder (…__…__3d_fullres); auto-download weights if none ---
+find_model () { find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | grep -iE "006|aort|femo" | head -1; }
+MODEL_FOLDER="$(find_model || true)"
+[ -z "$MODEL_FOLDER" ] && MODEL_FOLDER="$(find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | head -1 || true)"
+if [ -z "$MODEL_FOLDER" ]; then
+  echo "[weights] no model folder under $WROOT — downloading from Zenodo..."
+  ( cd "$WROOT" && curl -L "$ZENODO_URL" -o nnUNet_results.zip && unzip -o -q nnUNet_results.zip )
+  MODEL_FOLDER="$(find_model || true)"; [ -z "$MODEL_FOLDER" ] && MODEL_FOLDER="$(find "$WROOT" -type d -name "*Trainer*__*__3d_fullres" 2>/dev/null | head -1 || true)"
+fi
+[ -n "$MODEL_FOLDER" ] || { echo "FATAL: could not find/download a *Trainer*__*__3d_fullres model under $WROOT"; \
+  echo "  contents:"; find "$WROOT" -maxdepth 4 -type d | head -30; exit 1; }
+export nnUNet_results="$WROOT"
+echo "[weights] model-folder = $MODEL_FOLDER"
 
-echo "===== SeqSeg 2.1.0 CLI probe (run single = one image + seeds.json) ====="
-echo "----- seqseg run single --help -----";  seqseg run single --help 2>&1 | head -80 || true
-echo "----- seqseg run batch  --help -----";  seqseg run batch  --help 2>&1 | head -40 || true
-echo "----- seqseg init dataset --help -----"; seqseg init dataset --help 2>&1 | head -40 || true
-echo "----- seeds.json TEMPLATE (scaffold a throwaway dataset and cat it) -----"
-SCAF="$OUT_DIR/_seed_schema_probe"; rm -rf "$SCAF"
-seqseg init dataset "$SCAF" 2>&1 | head -20 || seqseg init dataset --out "$SCAF" 2>&1 | head -20 || true
-find "$SCAF" -maxdepth 2 -name "seeds*.json" -exec sh -c 'echo "== {} =="; cat "{}"' \; 2>/dev/null || echo "  (adjust init syntax from its --help above)"
-echo "----- seqseg doctor (should now see the weights) -----"; seqseg doctor 2>&1 | tail -12 || true
+ls "$PROMPTS_DIR"/*_prompts.json >/dev/null 2>&1 || { echo "FATAL: no step-1 prompts in $PROMPTS_DIR (run step 1 first)"; exit 1; }
 
-echo ""
-echo "Per-case seeds we generated (Aorta/Pulmonary endpoints, world coords):"
+# --- per case, per vessel: build --seed args from step-1 seeds_world_r and trace ---
 for j in "$PROMPTS_DIR"/*_prompts.json; do
   c=$(basename "$j" _prompts.json)
-  python - "$j" "$c" <<'PY'
-import json,sys
-j=json.load(open(sys.argv[1])); c=sys.argv[2]
-for name in ("Aorta","Pulmonary"):
-    s=j["structures"].get(name)
-    if s and s.get("endpoints_world"):
-        print(f"  {c} {name} seeds(world): {s['endpoints_world']}")
+  img="$IMG_DIR/${c}_0000.nii.gz"
+  [ -f "$img" ] || { echo "[skip $c] no image $img"; continue; }
+  for V in $VESSELS; do
+    SEEDS=$(python - "$j" "$V" <<'PY'
+import json, sys
+j = json.load(open(sys.argv[1])); v = sys.argv[2]
+s = j.get("structures", {}).get(v, {})
+args = []
+for xyzr in s.get("seeds_world_r", []):
+    x, y, z, r = xyzr
+    args += ["--seed", f"{x:.3f}", f"{y:.3f}", f"{z:.3f}", f"{r:.3f}"]
+print(" ".join(args))
 PY
+)
+    [ -z "$SEEDS" ] && { echo "[skip $c/$V] no seeds"; continue; }
+    out="$OUT_DIR/$c/$V"
+    [ -d "$out" ] && ls "$out"/*.vt* >/dev/null 2>&1 && { echo "[done $c/$V]"; continue; }
+    mkdir -p "$out"
+    echo "==== $c / $V : seqseg run single ($SEEDS) ===="
+    seqseg run single --image "$img" --outdir "$out" --model-folder "$MODEL_FOLDER" \
+        --nnunet-type 3d_fullres --train-dataset "$TRAIN_DATASET" --fold all \
+        --scale "$SCALE" --unit "$UNIT" $SEEDS || echo "  [warn] seqseg failed for $c/$V (see log)"
+  done
 done
-
-echo ""
-echo "Documented call shape (finalize the SEED flag from --help above):"
-echo "  seqseg -data_dir <DIR> -nnunet_results_path $SEQSEG_NNUNET_RESULTS -config_name $SEQSEG_CONFIG -unit mm -scale $SEQSEG_SCALE <SEED_FLAG ...>"
-echo "STOP: paste 'seqseg --help' so I wire the exact seed flag; then I enable the per-case loop."
+echo "DONE. SeqSeg traces -> $OUT_DIR/<case>/<vessel>/"

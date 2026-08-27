@@ -212,6 +212,13 @@ def process_case(lab_path, structures, args):
             rec["centerline_voxel"] = cl
             rec["endpoints_voxel"] = ends
             rec["endpoints_world"] = [vox2world(affine, e) for e in ends]
+            # per-endpoint radius (mm) = distance-transform value at the endpoint -> SeqSeg --seed X Y Z R
+            dtv = ndi.distance_transform_edt(mask, sampling=spacing)
+            seeds = []
+            for e in ends:
+                r = float(dtv[int(e[0]), int(e[1]), int(e[2])])
+                seeds.append(vox2world(affine, e) + [max(r, 1.0)])   # [x,y,z,r_mm], floor 1mm
+            rec["seeds_world_r"] = seeds
         elif name in CHAMBERS:
             rec["lasso_slices"] = adaptive_lasso(mask, adjacent, spacing,
                                                  args.lasso_k_mm, args.lasso_band_mm, curv_rad)
