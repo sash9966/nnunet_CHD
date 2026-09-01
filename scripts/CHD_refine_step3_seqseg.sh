@@ -33,6 +33,9 @@ REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 # ===== EDIT =====
 PROMPTS_DIR="${1:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"             # step 1 output (<case>_prompts.json)
 OUT_DIR="${2:-/scratch/users/sastocke/chd_refinement/out/seqseg_ds090}"
+CASES="${3:-}"                                       # optional comma-separated case filter
+GT_DIR="${4:-}"                                       # if set -> run job-4 eval_vs_gt at the end (e.g. Dataset080/labelsTr)
+EVAL_LCC_DIR="${5:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc}"
 WSEARCH=/scratch/users/sastocke/chd_refinement/seqseg_weights          # search anywhere under here
 WROOT="$WSEARCH/aorta_ct_mr"                                            # download target if missing
 ZENODO_URL="https://zenodo.org/records/15020477/files/nnUNet_results.zip?download=1"
@@ -48,6 +51,7 @@ IMG_DIRS=(
   "$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/imagesTs"
 )
 find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000.nii.gz" ] && { echo "$d/${c}_0000.nii.gz"; return 0; }; done; return 1; }
+want_case () { [ -z "$CASES" ] && return 0; case ",$CASES," in *",$1,"*) return 0;; *) return 1;; esac; }
 # ================
 mkdir -p "$OUT_DIR" "$WROOT" "$REPO/logs"
 
@@ -75,6 +79,7 @@ ls "$PROMPTS_DIR"/*_prompts.json >/dev/null 2>&1 || { echo "FATAL: no step-1 pro
 # --- per case, per vessel: build --seed args from step-1 seeds_world_r and trace ---
 for j in "$PROMPTS_DIR"/*_prompts.json; do
   c=$(basename "$j" _prompts.json)
+  want_case "$c" || continue
   img="$(find_image "$c" || true)"
   [ -n "$img" ] || { echo "[skip $c] no image in any IMG_DIRS"; continue; }
   for V in $VESSELS; do
@@ -100,3 +105,16 @@ PY
   done
 done
 echo "DONE. SeqSeg traces -> $OUT_DIR/<case>/<vessel>/"
+
+# ---- job 4: eval vs expert GT (runs only if GT_DIR given) ----
+if [ -n "$GT_DIR" ]; then
+  NNI_DIR="$(echo "$OUT_DIR" | sed 's/seqseg/nninteractive/')/refined"
+  EVAL_OUT="$(dirname "$OUT_DIR")/eval_$(basename "$OUT_DIR")"
+  EVAL_PY=/scratch/users/sastocke/conda_envs/nnunet310/bin/python   # known-good env for eval deps
+  echo ""; echo "===== job 4: eval_vs_gt (GT=$GT_DIR) ====="
+  echo "  nnInteractive refined: $NNI_DIR"
+  "$EVAL_PY" tools/eval_vs_gt.py --gt-dir "$GT_DIR" --lcc-dir "$EVAL_LCC_DIR" \
+      --nninteractive-dir "$NNI_DIR" --seqseg-dir "$OUT_DIR" --out "$EVAL_OUT" \
+      ${CASES:+--cases "$CASES"} || echo "  [warn] eval_vs_gt failed (see above)"
+  echo "  eval -> $EVAL_OUT/dice_vs_gt.csv"
+fi

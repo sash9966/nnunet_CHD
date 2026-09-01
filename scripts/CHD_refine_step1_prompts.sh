@@ -29,13 +29,15 @@ REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 # ===== EDIT: where the LCC pseudo-labels live, and where prompts go =====
 LCC_DIR="${1:-$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc}"
 OUT_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"
+CASES="${3:-}"   # optional comma-separated case filter (e.g. the Dataset080 GT cases)
 # =======================================================================
 mkdir -p "$OUT_DIR" "$REPO/logs"
+CASES_ARG=""; [ -n "$CASES" ] && CASES_ARG="--cases $CASES"
 echo "[prompts] LCC labels: $LCC_DIR"
-echo "[prompts] output:     $OUT_DIR"
+echo "[prompts] output:     $OUT_DIR   cases: ${CASES:-ALL}"
 
 python tools/label_to_prompts.py --labels-dir "$LCC_DIR" --out-dir "$OUT_DIR" --write-qc \
-    --structures LV-BP,RV-BP,LA,RA,Aorta,Pulmonary
+    --structures LV-BP,RV-BP,LA,RA,Aorta,Pulmonary $CASES_ARG
 
 echo "DONE. Per-case <case>_prompts.json + <case>_prompts_qc.nii.gz in $OUT_DIR"
 echo "  QC legend: 10=fg points, 11=neg points, 12=vessel centerline, 13=chamber lasso"
