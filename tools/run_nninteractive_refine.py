@@ -34,6 +34,17 @@ def log(*a):
     print(*a, flush=True)
 
 
+def spread_points(mask, n):
+    """n positive points sampled uniformly across a mask (good for the thin myocardial shell,
+    where a single interior/DT-peak point would cluster in the thickest spot)."""
+    idx = np.argwhere(mask)
+    if len(idx) == 0:
+        return []
+    rng = np.random.default_rng(0)
+    sel = idx[rng.choice(len(idx), size=min(n, len(idx)), replace=False)]
+    return [list(map(int, p)) for p in sel]
+
+
 def key_slice_lasso(mask):
     """Return (crop[di,dj,1] uint8, interaction_bbox) for the largest-area axial slice, or None."""
     areas = mask.sum(axis=(0, 1))
@@ -57,6 +68,7 @@ def main():
     ap.add_argument("--prompt-mode", default="lasso", choices=["lasso", "points", "both"])
     ap.add_argument("--n-fg", type=int, default=3)
     ap.add_argument("--n-vessel-pts", type=int, default=8, help="positive points sampled along a vessel centerline")
+    ap.add_argument("--n-myo-pts", type=int, default=12, help="positive points spread across the myocardium / other shells")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
@@ -118,11 +130,11 @@ def main():
                     sess.add_point_interaction(tuple(int(v) for v in p), include_interaction=True)
                 rec["positive"] = {"type": "centerline_points", "n": len(pts)}
                 did_pos = True
-        if not did_pos:                                         # points fallback / points mode
-            fg = interior_points(mask, spacing, args.n_fg)
-            for p in fg:
+        if not did_pos:                                         # Myo / other shells / lasso-failed -> spread points
+            pts = spread_points(mask, args.n_myo_pts)
+            for p in pts:
                 sess.add_point_interaction(tuple(int(v) for v in p), include_interaction=True)
-            rec["positive"] = {"type": "points", "points": fg}
+            rec["positive"] = {"type": "spread_points", "n": len(pts)}
 
         adj = (lab != 0) & (lab != sid)                        # negatives from adjacent structures
         if adj.any():
