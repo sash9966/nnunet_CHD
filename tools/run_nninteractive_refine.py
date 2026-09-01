@@ -27,7 +27,7 @@ import numpy as np
 import nibabel as nib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from label_to_prompts import interior_points, DEFAULT_STRUCTURES, CHAMBERS  # reuse verified helpers
+from label_to_prompts import interior_points, centerline, DEFAULT_STRUCTURES, CHAMBERS, VESSELS  # reuse verified helpers
 
 
 def log(*a):
@@ -56,6 +56,7 @@ def main():
     ap.add_argument("--structures", default=None, help="comma-separated (default: all present)")
     ap.add_argument("--prompt-mode", default="lasso", choices=["lasso", "points", "both"])
     ap.add_argument("--n-fg", type=int, default=3)
+    ap.add_argument("--n-vessel-pts", type=int, default=8, help="positive points sampled along a vessel centerline")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
@@ -108,6 +109,15 @@ def main():
                     did_pos = True
                 except Exception as e:
                     log("  [%s] lasso failed (%r) -> falling back to points" % (name, e))
+        if not did_pos and name in VESSELS:                     # tubular -> positive points along the centerline
+            cl, _ = centerline(mask, spacing)
+            if len(cl) >= 2:
+                k = max(1, len(cl) // max(1, args.n_vessel_pts))
+                pts = cl[::k][:args.n_vessel_pts]
+                for p in pts:
+                    sess.add_point_interaction(tuple(int(v) for v in p), include_interaction=True)
+                rec["positive"] = {"type": "centerline_points", "n": len(pts)}
+                did_pos = True
         if not did_pos:                                         # points fallback / points mode
             fg = interior_points(mask, spacing, args.n_fg)
             for p in fg:

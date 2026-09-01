@@ -57,8 +57,9 @@ for lab in "$LCC_DIR"/*.nii.gz; do
   out="$OUT_DIR/refined/${c}.nii.gz"
   [ -f "$out" ] && { echo "[done $c] exists"; continue; }
   echo "==== $c ===="
+  # chambers via lasso, VESSELS (Aorta/Pulmonary) via centerline points -> so we can compare nnI vs SeqSeg on vessels
   python tools/run_nninteractive_refine.py --image "$img" --label "$lab" --out "$out" \
-      --structures LV-BP,RV-BP,LA,RA --prompt-mode lasso \
+      --structures LV-BP,RV-BP,LA,RA,Aorta,Pulmonary --prompt-mode lasso \
       --save-prompts "$OUT_DIR/prompts/${c}_nnI_prompts.json"
 done
 echo "DONE. Refined masks -> $OUT_DIR/refined ; prompts -> $OUT_DIR/prompts"
