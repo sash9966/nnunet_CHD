@@ -217,7 +217,9 @@ def process_case(lab_path, structures, args):
             seeds = []
             for e in ends:
                 r = float(dtv[int(e[0]), int(e[1]), int(e[2])])
-                seeds.append(vox2world(affine, e) + [max(r, 1.0)])   # [x,y,z,r_mm], floor 1mm
+                wx, wy, wz = vox2world(affine, e)                    # nibabel affine = RAS+
+                # SeqSeg/SimpleITK read images in LPS -> negate X,Y so seeds land in the CT's frame
+                seeds.append([-wx, -wy, wz, max(r, 1.0)])            # [x,y,z,r_mm] LPS, radius floored 1mm
             rec["seeds_world_r"] = seeds
         elif name in CHAMBERS:
             rec["lasso_slices"] = adaptive_lasso(mask, adjacent, spacing,
