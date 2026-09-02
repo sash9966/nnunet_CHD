@@ -41,6 +41,11 @@ WROOT="$WSEARCH/aorta_ct_mr"                                            # downlo
 ZENODO_URL="https://zenodo.org/records/15020477/files/nnUNet_results.zip?download=1"
 TRAIN_DATASET=Dataset006_SEQAORTANDFEMOCT
 SEQSEG_CONFIG="${SEQSEG_CONFIG:-aorta_tutorial}"   # the 'global' default lacks keys (ADD_RADIUS); use a real config
+# tracing caps (env-overridable; empty = SeqSeg default). Cap bifurcation depth so the vessel tree
+# stays shallow enough to be useful clinically (the uncapped run produced a 731-step, 65-branch tree).
+SEQSEG_MAX_BRANCHES="${SEQSEG_MAX_BRANCHES:-}"
+SEQSEG_MAX_STEPS="${SEQSEG_MAX_STEPS:-}"
+SEQSEG_MAX_STEPS_PER_BRANCH="${SEQSEG_MAX_STEPS_PER_BRANCH:-}"
 SCALE=0.1; UNIT=mm; VESSELS="Aorta Pulmonary"
 # native CT images live in the SOURCE datasets — search all per case:
 IMG_DIRS=(
@@ -53,6 +58,10 @@ IMG_DIRS=(
 )
 find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000.nii.gz" ] && { echo "$d/${c}_0000.nii.gz"; return 0; }; done; return 1; }
 want_case () { [ -z "$CASES" ] && return 0; case ",$CASES," in *",$1,"*) return 0;; *) return 1;; esac; }
+CAPS=""
+[ -n "$SEQSEG_MAX_BRANCHES" ]        && CAPS="$CAPS --max-n-branches $SEQSEG_MAX_BRANCHES"
+[ -n "$SEQSEG_MAX_STEPS" ]           && CAPS="$CAPS --max-n-steps $SEQSEG_MAX_STEPS"
+[ -n "$SEQSEG_MAX_STEPS_PER_BRANCH" ] && CAPS="$CAPS --max-n-steps-per-branch $SEQSEG_MAX_STEPS_PER_BRANCH"
 # ================
 mkdir -p "$OUT_DIR" "$WROOT" "$REPO/logs"
 source scripts/_provenance.sh; stamp_provenance "refine-step3-seqseg" "$OUT_DIR" "model=SeqSeg:$TRAIN_DATASET" "prompts=$PROMPTS_DIR" "cases=${CASES:-ALL}"
@@ -105,7 +114,7 @@ PY
     echo "==== $c / $V : seqseg run single ($SEEDS) ===="
     seqseg run single --image "$img" --outdir "$out" --model-folder "$MODEL_FOLDER" \
         --nnunet-type 3d_fullres --train-dataset "$TRAIN_DATASET" --fold all \
-        --config-name "$SEQSEG_CONFIG" --scale "$SCALE" --unit "$UNIT" $SEEDS \
+        --config-name "$SEQSEG_CONFIG" --scale "$SCALE" --unit "$UNIT" $CAPS $SEEDS \
         || echo "  [warn] seqseg failed for $c/$V (see log)"
   done
 done
