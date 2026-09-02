@@ -18,5 +18,6 @@ PROMPTS=/scratch/users/sastocke/chd_refinement/prompts/d080
 SEQOUT=/scratch/users/sastocke/chd_refinement/out/seqseg_d080
 GT="$REPO/nnUNet_raw/Dataset080_ClinicalCaseSanjibDetailed/labelsTr"
 D080="BAF004,CHIPS001,CHIPS002,CHIPS005,CHIPS006,CHIPS007,CHIPS010,CHIPS016"
+rm -rf "$SEQOUT" "$(dirname "$SEQOUT")/eval_$(basename "$SEQOUT")"   # clean rerun: fresh traces + eval
 # args: PROMPTS_DIR  SEQSEG_OUT  CASES  GT_DIR(->runs job4 eval)  EVAL_LCC_DIR
 exec bash scripts/CHD_refine_step3_seqseg.sh "$PROMPTS" "$SEQOUT" "$D080" "$GT" "$LCC"

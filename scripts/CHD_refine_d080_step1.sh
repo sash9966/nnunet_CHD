@@ -16,4 +16,5 @@ REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 LCC="$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc"
 OUT=/scratch/users/sastocke/chd_refinement/prompts/d080
 D080="BAF004,CHIPS001,CHIPS002,CHIPS005,CHIPS006,CHIPS007,CHIPS010,CHIPS016"
+rm -rf "$OUT"   # clean rerun: fresh prompts every time
 exec bash scripts/CHD_refine_step1_prompts.sh "$LCC" "$OUT" "$D080"

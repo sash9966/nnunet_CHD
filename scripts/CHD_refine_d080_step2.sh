@@ -16,5 +16,5 @@ REPO=/scratch/users/sastocke/nnunet_CHD; cd "$REPO"
 LCC="$REPO/nnUNet_raw/Dataset090_ImageCHDPseudoCombined/predictions/ds090__grid2native_lcc"
 OUT=/scratch/users/sastocke/chd_refinement/out/nninteractive_d080
 D080="BAF004,CHIPS001,CHIPS002,CHIPS005,CHIPS006,CHIPS007,CHIPS010,CHIPS016"
-rm -f "$OUT"/refined/*.nii.gz 2>/dev/null || true   # schema now 7 structures — clear stale masks
+rm -rf "$OUT"   # clean rerun: fresh refined masks + prompts every time
 exec bash scripts/CHD_refine_step2_nninteractive.sh "$LCC" "$OUT" "$D080"
