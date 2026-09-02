@@ -47,6 +47,7 @@ IMG_DIRS=(
 )
 # ==============================================================================================
 mkdir -p "$OUT_DIR/refined" "$OUT_DIR/prompts" "$REPO/logs"
+source scripts/_provenance.sh; stamp_provenance "refine-step2-nninteractive" "$OUT_DIR" "model=nnInteractive" "lcc=$LCC_DIR" "cases=${CASES:-ALL}"
 
 find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000.nii.gz" ] && { echo "$d/${c}_0000.nii.gz"; return 0; }; done; return 1; }
 want_case () { [ -z "$CASES" ] && return 0; case ",$CASES," in *",$1,"*) return 0;; *) return 1;; esac; }

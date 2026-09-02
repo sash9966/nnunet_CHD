@@ -54,6 +54,7 @@ find_image () { local c="$1" d; for d in "${IMG_DIRS[@]}"; do [ -f "$d/${c}_0000
 want_case () { [ -z "$CASES" ] && return 0; case ",$CASES," in *",$1,"*) return 0;; *) return 1;; esac; }
 # ================
 mkdir -p "$OUT_DIR" "$WROOT" "$REPO/logs"
+source scripts/_provenance.sh; stamp_provenance "refine-step3-seqseg" "$OUT_DIR" "model=SeqSeg:$TRAIN_DATASET" "prompts=$PROMPTS_DIR" "cases=${CASES:-ALL}"
 
 # --- auto-discover the model trainer folder anywhere under WSEARCH; auto-download if none ---
 find_model () {

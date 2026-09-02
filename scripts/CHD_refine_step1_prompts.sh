@@ -32,6 +32,7 @@ OUT_DIR="${2:-/scratch/users/sastocke/chd_refinement/prompts/ds090}"
 CASES="${3:-}"   # optional comma-separated case filter (e.g. the Dataset080 GT cases)
 # =======================================================================
 mkdir -p "$OUT_DIR" "$REPO/logs"
+source scripts/_provenance.sh; stamp_provenance "refine-step1-prompts" "$OUT_DIR" "lcc=$LCC_DIR" "cases=${CASES:-ALL}"
 CASES_ARG=""; [ -n "$CASES" ] && CASES_ARG="--cases $CASES"
 echo "[prompts] LCC labels: $LCC_DIR"
 echo "[prompts] output:     $OUT_DIR   cases: ${CASES:-ALL}"
