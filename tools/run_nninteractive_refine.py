@@ -69,6 +69,7 @@ def main():
     ap.add_argument("--n-fg", type=int, default=3)
     ap.add_argument("--n-vessel-pts", type=int, default=8, help="positive points sampled along a vessel centerline")
     ap.add_argument("--n-myo-pts", type=int, default=12, help="positive points spread across the myocardium / other shells")
+    ap.add_argument("--max-grow", type=float, default=3.0, help="if nnI segments > this x the LCC voxel count, treat as runaway and keep the LCC label")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
@@ -143,6 +144,13 @@ def main():
                 rec["negatives"].append(list(map(int, p)))
 
         res = tgt.cpu().numpy()
+        res_cnt = int((res > 0).sum()); lcc_cnt = int(mask.sum())
+        if lcc_cnt > 0 and res_cnt > args.max_grow * lcc_cnt:   # runaway (e.g. CHIPS002 myo flood)
+            log("  [%s] RUNAWAY nnI (%d vox > %.1fx LCC %d) -> keeping LCC label for this structure"
+                % (name, res_cnt, args.max_grow, lcc_cnt))
+            res = mask.astype(np.uint8)
+            if isinstance(rec.get("positive"), dict):
+                rec["positive"]["fallback"] = "LCC(runaway)"
         n_new = int(((res > 0) & (out == 0)).sum())
         out[(res > 0) & (out == 0)] = sid                      # first-writer wins (avoid overlaps)
         prompts_used[name] = rec

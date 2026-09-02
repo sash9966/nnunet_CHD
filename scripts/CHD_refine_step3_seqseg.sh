@@ -40,6 +40,7 @@ WSEARCH=/scratch/users/sastocke/chd_refinement/seqseg_weights          # search 
 WROOT="$WSEARCH/aorta_ct_mr"                                            # download target if missing
 ZENODO_URL="https://zenodo.org/records/15020477/files/nnUNet_results.zip?download=1"
 TRAIN_DATASET=Dataset006_SEQAORTANDFEMOCT
+SEQSEG_CONFIG="${SEQSEG_CONFIG:-aorta_tutorial}"   # the 'global' default lacks keys (ADD_RADIUS); use a real config
 SCALE=0.1; UNIT=mm; VESSELS="Aorta Pulmonary"
 # native CT images live in the SOURCE datasets — search all per case:
 IMG_DIRS=(
@@ -74,6 +75,8 @@ fi
 export nnUNet_results="$(dirname "$(dirname "$MODEL_FOLDER")")"
 echo "[weights] model-folder   = $MODEL_FOLDER"
 echo "[weights] nnUNet_results = $nnUNet_results"
+echo "[seqseg] available configs (want one that defines ADD_RADIUS; using '$SEQSEG_CONFIG'):"
+seqseg config list 2>&1 | head -20 || seqseg config --help 2>&1 | head -20 || true
 
 ls "$PROMPTS_DIR"/*_prompts.json >/dev/null 2>&1 || { echo "FATAL: no step-1 prompts in $PROMPTS_DIR (run step 1 first)"; exit 1; }
 
@@ -102,7 +105,8 @@ PY
     echo "==== $c / $V : seqseg run single ($SEEDS) ===="
     seqseg run single --image "$img" --outdir "$out" --model-folder "$MODEL_FOLDER" \
         --nnunet-type 3d_fullres --train-dataset "$TRAIN_DATASET" --fold all \
-        --scale "$SCALE" --unit "$UNIT" $SEEDS || echo "  [warn] seqseg failed for $c/$V (see log)"
+        --config-name "$SEQSEG_CONFIG" --scale "$SCALE" --unit "$UNIT" $SEEDS \
+        || echo "  [warn] seqseg failed for $c/$V (see log)"
   done
 done
 echo "DONE. SeqSeg traces -> $OUT_DIR/<case>/<vessel>/"

@@ -9,8 +9,15 @@ stamp_provenance () {
   { local label="$1" outdir="$2"; shift 2 || true
     local repo="${REPO:-/scratch/users/sastocke/nnunet_CHD}"
     local commit branch state ts host job env params
-    commit=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo NA)
-    branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo NA)
+    commit=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null || true)
+    branch=$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    if [ -z "$commit" ]; then                 # git binary often absent on compute nodes -> read .git directly
+      local head; head=$(cat "$repo/.git/HEAD" 2>/dev/null || true)
+      if [ "${head:0:5}" = "ref: " ]; then
+        branch="${head#ref: refs/heads/}"; commit=$(cut -c1-12 "$repo/.git/${head#ref: }" 2>/dev/null || true)
+      else commit="${head:0:12}"; fi
+    fi
+    [ -z "$commit" ] && commit=NA; [ -z "$branch" ] && branch=NA
     git -C "$repo" diff --quiet 2>/dev/null && state=clean || state=DIRTY
     ts=$(date -u +%Y-%m-%dT%H:%M:%SZ); host=$(hostname); job=${SLURM_JOB_ID:-none}; env=${CONDA_PREFIX:-none}
     params="$*"
