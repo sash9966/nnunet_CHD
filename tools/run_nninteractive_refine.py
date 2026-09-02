@@ -69,7 +69,9 @@ def main():
     ap.add_argument("--n-fg", type=int, default=3)
     ap.add_argument("--n-vessel-pts", type=int, default=8, help="positive points sampled along a vessel centerline")
     ap.add_argument("--n-myo-pts", type=int, default=12, help="positive points spread across the myocardium / other shells")
-    ap.add_argument("--max-grow", type=float, default=4.0, help="runaway threshold: if nnI segments > this x the LCC voxel count, keep the LCC label. Calibrated on D080: CHIPS002 LV grew 3.04x (a REAL fix of an under-segmented seed) vs Myo 5.57x (a flood), so 3.0 was too tight.")
+    ap.add_argument("--max-grow", type=float, default=4.0, help="ratio runaway threshold (blobs only): nnI > this x LCC voxels -> keep LCC")
+    ap.add_argument("--guard-min-lcc", type=int, default=2000, help="skip the RATIO test when the LCC seed is smaller than this (a degenerate seed is not a valid reference)")
+    ap.add_argument("--guard-abs-frac", type=float, default=0.05, help="absolute runaway: nnI > this fraction of the whole image -> keep LCC (catches true floods regardless of seed size)")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
@@ -145,9 +147,19 @@ def main():
 
         res = tgt.cpu().numpy()
         res_cnt = int((res > 0).sum()); lcc_cnt = int(mask.sum())
-        if lcc_cnt > 0 and res_cnt > args.max_grow * lcc_cnt:   # runaway (e.g. CHIPS002 myo flood)
-            log("  [%s] RUNAWAY nnI (%d vox > %.1fx LCC %d) -> keeping LCC label for this structure"
-                % (name, res_cnt, args.max_grow, lcc_cnt))
+        # Runaway detection. Two independent criteria, because a RATIO test is invalid when the LCC
+        # seed is degenerate (a 115-voxel "aorta" makes any correct segmentation look like a flood):
+        #   (a) ABSOLUTE: > guard_abs_frac of the whole image  -> a true flood at any seed size
+        #   (b) RATIO: only for BLOBS (chambers/myo, where the seed is trustworthy) and only when the
+        #       seed is big enough to be a reference. VESSELS are exempt: their seeds are
+        #       systematically under-segmented, so large legitimate growth is expected.
+        abs_bad = res_cnt > args.guard_abs_frac * arr.size
+        ratio_bad = (name not in VESSELS and lcc_cnt >= args.guard_min_lcc
+                     and res_cnt > args.max_grow * lcc_cnt)
+        if lcc_cnt > 0 and (abs_bad or ratio_bad):
+            log("  [%s] RUNAWAY nnI (%d vox; %.1fx LCC %d; %.1f%% of image; %s) -> keeping LCC label"
+                % (name, res_cnt, res_cnt / max(lcc_cnt, 1), lcc_cnt,
+                   100.0 * res_cnt / arr.size, "absolute" if abs_bad else "ratio"))
             res = mask.astype(np.uint8)
             if isinstance(rec.get("positive"), dict):
                 rec["positive"]["fallback"] = "LCC(runaway)"
