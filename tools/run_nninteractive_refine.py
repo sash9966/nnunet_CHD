@@ -69,7 +69,7 @@ def main():
     ap.add_argument("--n-fg", type=int, default=3)
     ap.add_argument("--n-vessel-pts", type=int, default=8, help="positive points sampled along a vessel centerline")
     ap.add_argument("--n-myo-pts", type=int, default=12, help="positive points spread across the myocardium / other shells")
-    ap.add_argument("--max-grow", type=float, default=3.0, help="if nnI segments > this x the LCC voxel count, treat as runaway and keep the LCC label")
+    ap.add_argument("--max-grow", type=float, default=4.0, help="runaway threshold: if nnI segments > this x the LCC voxel count, keep the LCC label. Calibrated on D080: CHIPS002 LV grew 3.04x (a REAL fix of an under-segmented seed) vs Myo 5.57x (a flood), so 3.0 was too tight.")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
