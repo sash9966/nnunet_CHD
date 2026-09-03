@@ -135,8 +135,17 @@ for FOLD in "${FOLDS[@]}"; do
   nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER}" -p "${PLANS}" ${CONT}
 done
 
+
+# ---- Phase 3: chain the frozen-Dataset080 evaluation ----
+# Only reached if every fold trained (set -e aborts earlier otherwise). Submitted as its own job so it
+# gets its own log/allocation instead of eating this job's wall clock. AUTO_EVAL=0 to disable.
+if [ "${AUTO_EVAL:-1}" = "1" ]; then
+  EVAL_JOB="$(sbatch --parsable scripts/CHD_predict_dataset080_d092.sh 2>/dev/null || true)"
+  if [ -n "$EVAL_JOB" ]; then echo "[chain] queued frozen-D080 evaluation as job ${EVAL_JOB}"
+  else echo "[chain] WARNING: could not auto-submit the eval job — run it manually"; fi
+fi
 echo "=============================================================="
-echo "DONE. Dataset092 trained on folds ${FOLDS[*]}."
+echo "DONE. Dataset093 trained on folds ${FOLDS[*]}."
 echo "  model: ${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}/"
-echo "  next:  sbatch scripts/CHD_predict_dataset080_d092.sh (predicts every arm)"
+echo "  eval:  auto-submitted (see [chain] above); AUTO_EVAL=0 to skip"
 echo "=============================================================="
