@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-#  CHD_Dataset092_refined.sh
+#  CHD_Dataset093_refined_plus.sh
 #  Dataset093 = the same refined labels as Dataset092 PLUS the previously-held-out cases that the
 #  refinement QC newly passed (CT_704_49, CT_853_56_no). Everything else is identical to D092, so
 #  *** D092 vs D093 isolates ONE variable: the ADDITIONAL DATA ***.
@@ -70,7 +70,7 @@ source scripts/_provenance.sh
 stamp_provenance "D093-build+train" "${nnUNet_results}/${DATASET_NAME}" \
     "src=${SRC_DATASET}" "refined=${REFINED_DIR}" "trainer=${TRAINER}" "design=label_swap+added_cases"
 
-# ---- Phase 0: build Dataset092 from Dataset091 ----
+# ---- Phase 0: build Dataset093 from Dataset091 ----
 if [ ! -f "${CKPT_DIR}/00_build.done" ]; then
   echo "[Phase 0] building ${DATASET_NAME} from ${SRC_DATASET}"
   [ -d "${REFINED_DIR}" ] || { echo "FATAL: refined labels dir not found: ${REFINED_DIR}"; exit 1; }
