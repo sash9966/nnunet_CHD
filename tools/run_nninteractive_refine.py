@@ -71,7 +71,8 @@ def main():
     ap.add_argument("--n-myo-pts", type=int, default=12, help="positive points spread across the myocardium / other shells")
     ap.add_argument("--max-grow", type=float, default=4.0, help="ratio runaway threshold (blobs only): nnI > this x LCC voxels -> keep LCC")
     ap.add_argument("--guard-min-lcc", type=int, default=2000, help="skip the RATIO test when the LCC seed is smaller than this (a degenerate seed is not a valid reference)")
-    ap.add_argument("--guard-abs-frac", type=float, default=0.05, help="absolute runaway: nnI > this fraction of the whole image -> keep LCC (catches true floods regardless of seed size)")
+    ap.add_argument("--guard-abs-frac", type=float, default=0.05, help="a structure larger than this fraction of the image is SUSPICIOUS (must also fail the ratio test to be rejected)")
+    ap.add_argument("--guard-hard-frac", type=float, default=0.25, help="a structure larger than this fraction of the image is rejected outright (no anatomy is 25%% of a chest CT)")
     ap.add_argument("--save-prompts", default=None, help="optional JSON dump of the prompts used")
     args = ap.parse_args()
 
@@ -153,13 +154,18 @@ def main():
         #   (b) RATIO: only for BLOBS (chambers/myo, where the seed is trustworthy) and only when the
         #       seed is big enough to be a reference. VESSELS are exempt: their seeds are
         #       systematically under-segmented, so large legitimate growth is expected.
-        abs_bad = res_cnt > args.guard_abs_frac * arr.size
+        # Neither signal is reliable alone: an ABSOLUTE cap misfires because in a tight-FOV cardiac CT
+        # the myocardium legitimately occupies ~5-8% of the volume (Fanwei: 10 cases reverted at only
+        # 1.3-3.6x growth), and a RATIO test misfires on a degenerate seed (a 115-voxel "aorta").
+        # So: reject outright only if absurdly large, otherwise require BOTH signals.
+        frac = res_cnt / float(arr.size)
+        hard_bad = frac > args.guard_hard_frac
         ratio_bad = (name not in VESSELS and lcc_cnt >= args.guard_min_lcc
                      and res_cnt > args.max_grow * lcc_cnt)
-        if lcc_cnt > 0 and (abs_bad or ratio_bad):
+        if lcc_cnt > 0 and (hard_bad or (ratio_bad and frac > args.guard_abs_frac)):
             log("  [%s] RUNAWAY nnI (%d vox; %.1fx LCC %d; %.1f%% of image; %s) -> keeping LCC label"
                 % (name, res_cnt, res_cnt / max(lcc_cnt, 1), lcc_cnt,
-                   100.0 * res_cnt / arr.size, "absolute" if abs_bad else "ratio"))
+                   100.0 * frac, "hard-cap" if hard_bad else "ratio+size"))
             res = mask.astype(np.uint8)
             if isinstance(rec.get("positive"), dict):
                 rec["positive"]["fallback"] = "LCC(runaway)"
