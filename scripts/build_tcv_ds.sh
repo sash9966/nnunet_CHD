@@ -17,10 +17,10 @@ set -euo pipefail
 # ===================== EDIT THESE =====================
 SRC=/oak/stanford/groups/amarsden/elenasm/TCV_project
 RAW=/scratch/users/sastocke/nnunet_CHD/nnUNet_raw
-DS_ID=503
-DS_NAME="Dataset${DS_ID}_TCV_DonorX_ToRecipient"
-TRAIN_PREFIXES="d x"     # cohorts -> training (imagesTr/labelsTr)
-INFER_PREFIXES="r"       # cohorts -> held-out inference (imagesTs, +labelsTs for scoring)
+DS_ID="${DS_ID:-503}"
+DS_NAME="${DS_NAME:-Dataset${DS_ID}_TCV_DonorX_ToRecipient}"
+TRAIN_PREFIXES="${TRAIN_PREFIXES:-d x}"   # cohorts -> training (imagesTr/labelsTr)
+INFER_PREFIXES="${INFER_PREFIXES:-r}"     # cohorts -> held-out inference (imagesTs, +labelsTs for scoring)
 # ======================================================
 
 IMG="$SRC/img_anon"; SEG="$SRC/seg_anon"
