@@ -37,6 +37,10 @@ export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocess
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
 export PYTHONPATH="/scratch/users/sastocke/nnunet_CHD:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
+export nnUNet_compile=f          # torch.compile/Triton JIT needs Python.h from $CONDA_PREFIX/include;
+                                 # the scratch-purge repair restored lib/ but not include/, so compile
+                                 # dies at Epoch 0 ("Python.h: No such file"). Disabling it is safe
+                                 # (slightly slower). Remove once the headers are restored.
 REPO="/scratch/users/sastocke/nnunet_CHD"; cd "$REPO"
 
 # ===== arm config =====
