@@ -112,4 +112,4 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - `scripts/CHD_Dataset200_train5fold.sh`: same settings, folds 0–4 sequentially for held-out evaluation.
 - Use normal `git pull` on `all-experiments`, then direct `sbatch scripts/CHD_Dataset200_*.sh`; no submission wrapper.
 - Preserve native MRI input geometry; the CT-specific ImageCHD-grid inference route above does not apply to this MRI-trained model.
-- Reuse `_provenance.sh`, project symlink paths and existing environment activation. Run the two scripts sequentially.
+- Reuse `_provenance.sh`, project symlink paths and existing environment activation. The two jobs can train concurrently; only preprocessing and initial unpacking are serialized.

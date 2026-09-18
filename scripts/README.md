@@ -205,7 +205,7 @@ mkdir -p logs
 sbatch scripts/CHD_Dataset200_mri.sh
 ```
 
-When the all-case job finishes, submit the held-out comparison:
+Submit the held-out comparison independently (it may train alongside the all-case job):
 
 ```bash
 sbatch scripts/CHD_Dataset200_train5fold.sh
@@ -214,8 +214,9 @@ sbatch scripts/CHD_Dataset200_train5fold.sh
 The first script trains fold `all` and exports `CLINIC_MODEL_all` under
 `nnUNet_results/Dataset200_MRI`. The second trains folds 0–4 sequentially.
 Both run preprocessing if needed and resume latest checkpoints after walltime
-interrupts. Resubmit the same script to continue. A dataset lock prevents the two
-scripts from running simultaneously; a second concurrent job exits with a message.
+interrupts. Resubmit the same script to continue. A shared lock covers only preprocessing and initial data unpacking. A second job
+waits for preparation, then releases the lock before training. The all-case job
+and the five-fold job may train concurrently on their separate GPU allocations.
 Each script uses 1 GPU, 12 CPUs, 64 GB and 72 hours, matching the existing CHD jobs.
 
 The 200-epoch run is an initial baseline, not a convergence guarantee. Five-fold

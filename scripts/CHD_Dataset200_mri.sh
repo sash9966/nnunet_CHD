@@ -47,9 +47,6 @@ TRAINER="nnUNetTrainerDA5_200epochs"; FOLDS=(all)
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/mri"
 MODELDIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
 mkdir -p "${CKPT_DIR}" "${REPO}/logs"
-# Do not run the two D200 scripts simultaneously (shared preprocessing/unpacking).
-exec 9>"${CKPT_DIR}/run.lock"
-flock -n 9 || { echo 'Another Dataset200 job is running. Resubmit after it finishes.' >&2; exit 1; }
 source scripts/_provenance.sh
 RUN_RECORD="${CKPT_DIR}/runs/all_$(date -u +%Y%m%dT%H%M%SZ)_${SLURM_JOB_ID:-manual}"
 mkdir -p "${RUN_RECORD}"
@@ -76,6 +73,10 @@ assert images == labels and len(images) == 17, 'Expected 17 matching image/label
 CHECK
 
 # ---- Phase 1: plan and preprocess once; resume through the existing marker ----
+# Only shared preparation is serialized; training releases this lock.
+exec 9>"${CKPT_DIR}/run.lock"
+echo '[Phase 1] waiting for shared preparation, if another job is preparing data'
+flock 9
 if [ -f "${CKPT_DIR}/01_preprocess.done" ]; then
   cmp "${RUN_RECORD}/SHA256SUMS" "${CKPT_DIR}/SHA256SUMS" || { echo 'Dataset changed since preprocessing; inspect before restarting' >&2; exit 1; }
   [ -f "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}.json" ] || { echo 'Preprocessed plans missing; inspect phase marker' >&2; exit 1; }
@@ -86,6 +87,22 @@ else
   touch "${CKPT_DIR}/01_preprocess.done"
 fi
 cp "${nnUNet_preprocessed}/${DATASET_NAME}/${PLANS}.json" "${RUN_RECORD}/"
+
+# Finish first-time unpacking before either job starts training. Use the same
+# dataset-class API as this repository's trainer (NumPy or Blosc2).
+python -c '
+import os, sys
+from pathlib import Path
+from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
+from nnunetv2.training.dataloading.nnunet_dataset import infer_dataset_class
+base = Path(os.environ["nnUNet_preprocessed"]) / sys.argv[1]
+configuration = PlansManager(str(base / (sys.argv[2] + ".json"))).get_configuration(sys.argv[3])
+folder = str(base / configuration.data_identifier)
+infer_dataset_class(folder).unpack_dataset(folder, overwrite_existing=False, num_processes=4, verify=True)
+' "${DATASET_NAME}" "${PLANS}" "${FULLRES}"
+flock -u 9
+exec 9>&-
+echo '[Phase 1] shared preparation complete; training can run concurrently'
 
 # ---- Phase 2: train; completed folds skip, interrupted folds resume ----
 for FOLD in "${FOLDS[@]}"; do
