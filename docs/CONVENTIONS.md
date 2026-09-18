@@ -104,3 +104,12 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
   `GetArrayFromImage` (copy). (This caused Dataset090's segfault + false "no myo".)
 - **Metrics undersell VSD:** report detection + centroid + NSD, split VSD vs ASD; volumetric
   Dice is brutal on thin proxy structures (visually-perfect cases scored ~0.3).
+
+
+## Dataset200 MRI (2026-09-18)
+- `Dataset200_MRI`: 17 seven-label clinical MRI cases; independent from the CT datasets.
+- `scripts/CHD_Dataset200_mri.sh`: existing DA5 200-epoch trainer, ResEnc-M, fold `all`, exports `CLINIC_MODEL_all`.
+- `scripts/CHD_Dataset200_train5fold.sh`: same settings, folds 0–4 sequentially for held-out evaluation.
+- Use normal `git pull` on `all-experiments`, then direct `sbatch scripts/CHD_Dataset200_*.sh`; no submission wrapper.
+- Preserve native MRI input geometry; the CT-specific ImageCHD-grid inference route above does not apply to this MRI-trained model.
+- Reuse `_provenance.sh`, project symlink paths and existing environment activation. Run the two scripts sequentially.

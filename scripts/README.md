@@ -190,3 +190,40 @@ Phase 0  ──  build datasets
 Read CSV outputs into `docs/project_overview.html` (Cascade Ablation / Fold-0
 Ablation / Whole-Heart Pipeline sections — entries persist in localStorage)
 to track all of these results in one place.
+
+
+## Dataset200 — seven-label clinical MRI (2026-09-18)
+
+Uses the existing `all-experiments` branch, environment, bioe allocation,
+`nnUNetTrainerDA5_200epochs`, ResEnc-M plans, phase markers and `_provenance.sh`.
+Dataset200_MRI contains 17 MRI cases and must already be uploaded.
+
+```bash
+cd /scratch/users/sastocke/nnunet_CHD
+git pull
+mkdir -p logs
+sbatch scripts/CHD_Dataset200_mri.sh
+```
+
+When the all-case job finishes, submit the held-out comparison:
+
+```bash
+sbatch scripts/CHD_Dataset200_train5fold.sh
+```
+
+The first script trains fold `all` and exports `CLINIC_MODEL_all` under
+`nnUNet_results/Dataset200_MRI`. The second trains folds 0–4 sequentially.
+Both run preprocessing if needed and resume latest checkpoints after walltime
+interrupts. Resubmit the same script to continue. A dataset lock prevents the two
+scripts from running simultaneously; a second concurrent job exits with a message.
+Each script uses 1 GPU, 12 CPUs, 64 GB and 72 hours, matching the existing CHD jobs.
+
+The 200-epoch run is an initial baseline, not a convergence guarantee. Five-fold
+scores are in `fold_*/validation/summary.json`; scores from `fold_all` are in-sample.
+No CT data or CT-grid resizing is used. Environment paths go through the existing
+`nnunet_CHD/nnUNet_*` symlinks, so the prior upload under `nnUNet/nnUNet_raw` is
+accessible through the established project path. Do not recreate those symlinks.
+
+Provenance uses the existing `logs/run_manifest.jsonl` and `PROVENANCE.txt`, plus
+per-run script, dataset checksum, package list, plans and available splits under
+`Dataset200_MRI/.checkpoints/mri/runs/`. Training was not launched during preparation.
