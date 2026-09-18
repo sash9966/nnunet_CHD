@@ -1,7 +1,7 @@
 # nnunet_CHD — Feature Reference
 
 **Branch:** `all-experiments`  
-**Last updated:** 2026-05-13  
+**Last updated:** 2026-09-18
 **Purpose:** Authoritative inventory of every feature, trainer, script, and dataset.
 Read this file at the start of any conversation to reconstruct full project state without re-scanning the codebase.
 
@@ -325,3 +325,27 @@ reads source read-only and writes only new datasets. Full guide:
 **Tests:** `tests/test_chd_landmarks.py` (13 synthetic, no trainer import)
 **Pairs with trainer:** `nnUNetTrainerDA5DiseaseLandmark` (§2)
 **Limitations:** no `pulmonary_veins` label → APVC/TAPVR not derivable; no HLHS column in xlsx → HLHS dormant. Diagnosis flags assumed given (not a diagnostic tool).
+
+## Accepted-50 refinement comparison (2026-09-16)
+
+New isolated workflow, locally tested; GPU outcomes pending. [Runbook](refinement_four_arm.md) · [shared Claude/Codex memory](REFINEMENT_MEMORY.md).
+
+| File | Role |
+|---|---|
+| `scripts/CHD_refinement_four_arm.sh` | Sherlock init/refinement/assembly/build/preprocessing/training stages; four arms × five folds |
+| `tools/run_refinement_ablation.py` | Pinned accepted cohort, chamber prompts, directed vessel tracing, final-mask composition and direct-label evaluation |
+| `tools/refinement_common.py` | Physical-grid checks, prompt geometry, seed-connected cleanup, retention/growth QC and simultaneous conflict arbitration |
+| `tools/seqseg_bounded.py` | Process-local SeqSeg adapter: at most two detected bifurcation generations on both daughters; probability/filter audit volumes |
+| `tools/build_refinement_ablation.py` | Identical cohorts/splits and copied architecture/spacing/normalization; preprocessing without replanning; resumable training |
+| `tests/test_refinement_ablation.py` | Regression checks without model inference |
+
+Reserved IDs (builder rejects collisions): D094 baseline, D095 nnInteractive chambers 1–4, D096 additive SeqSeg vessels 6–7, D097 combined. Myocardium 5 stays unchanged. Source is D090: 97 ImageCHD + exactly 50 original accepted pseudo cases (45 Fanwei + 5 clinical), not D091 promotions or all 60. Same five splits, `nnUNetTrainerDA5_200epochs`, `nnUNetResEncUNetMPlans`, `3d_fullres`. No new trainer classes. Clinical-median-spacing experiment remains on hold. Historical scripts and historical D093 results are separate from this implementation.
+
+Seed-check follow-up: relative-core placement replaces fixed-inset-only placement after slice review found thin-spur seeds. QC distinguishes unchanged seeds from explicit rejection and records raw SeqSeg versus final added/removed voxel counts. See the runbook and shared memory.
+
+### Sherlock launcher and matched evaluation (2026-09-18)
+
+- `scripts/CHD_refinement_submit.sh`: one submission command, dependency chain for preparation → preprocessing → four-arm training → D080 evaluation. Default five folds + ensemble; `FOLDS=0` for a matched quick run.
+- `tools/evaluate_refinement_models.py`: legacy ImageCHD-grid route, native backprojection `--no-lcc`, per-fold/ensemble outputs in D080 `predictions/ds094_*` through `ds097_*`, metrics and complete-case provenance checks.
+- D094 `ImageCHDPseudoBaseline`, D095 `ImageCHDRefinedChambers`, D096 `ImageCHDRefinedSeqSeg`, D097 `ImageCHDRefinedCombined`; D093 preserved. Same conventional trainer/plans names as D091/D092, frozen D090 plan contents.
+- `tests/test_refinement_launch_eval.py`: scheduler dependency/duplicate guards and actual final-mask metrics; 23 tests total with refinement regression suite. No new trainer.

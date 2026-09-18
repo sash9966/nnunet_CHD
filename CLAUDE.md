@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Propose commands first; only run after I approve.
 
 ### Workflow
+- Claude and Codex share `docs/CONVENTIONS.md` and `docs/REFINEMENT_MEMORY.md`; read both before clinical refinement work and update observed findings and current decisions together. Current runnable study: `docs/refinement_four_arm.md`.
 - Start complex tasks with a short plan, then execute step-by-step.
 - Prefer minimal diffs; avoid refactors unless requested.
 - After changes: run the smallest relevant check (unit test / lint) and summarize results.
