@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Edit these defaults if your cluster setup changes.
+export CHD_REPO="${CHD_REPO:-/scratch/users/sastocke/nnunet_CHD}"
+export NNUNET_ENV="${NNUNET_ENV:-/scratch/users/sastocke/conda_envs/nnunet310}"
+export nnUNet_raw="${nnUNet_raw:-/scratch/users/sastocke/nnUNet/nnUNet_raw}"
+export nnUNet_preprocessed="${nnUNet_preprocessed:-/scratch/users/sastocke/nnUNet/nnUNet_preprocessed}"
+export nnUNet_results="${nnUNet_results:-/scratch/users/sastocke/nnUNet/nnUNet_results}"
+export TRAINER="${TRAINER:-nnUNetTrainerDA5MRI200}"
+export PLANS=nnUNetResEncUNetMPlans
+export PLANNER=nnUNetPlannerResEncM
+export CONFIGURATION=3d_fullres
+export DATASET=Dataset200_MRI
+export CPU_PARTITION="${CPU_PARTITION:-normal}"
+export GPU_PARTITION="${GPU_PARTITION:-gpu}"
+export GPU_GRES="${GPU_GRES:-gpu:1}"
+export TRAIN_TIME="${TRAIN_TIME:-24:00:00}"
+export PREP_TIME="${PREP_TIME:-08:00:00}"
+export CV_CONCURRENCY="${CV_CONCURRENCY:-2}"
+export nnUNet_n_proc_DA="${nnUNet_n_proc_DA:-6}"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export PYTHONUNBUFFERED=1
