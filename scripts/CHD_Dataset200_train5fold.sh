@@ -33,6 +33,10 @@ export nnUNet_preprocessed="/scratch/users/sastocke/nnunet_CHD/nnUNet_preprocess
 export nnUNet_results="/scratch/users/sastocke/nnunet_CHD/nnUNet_results"
 export PYTHONPATH="/scratch/users/sastocke/nnunet_CHD:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
+# Sherlock nnunet310 lacks Python.h needed by torch.compile/Triton.
+# Use ordinary CUDA training; compilation is an optional optimization.
+export nnUNet_compile=false
+echo "[env] nnUNet_compile=${nnUNet_compile} (CUDA training without JIT compilation)"
 REPO="/scratch/users/sastocke/nnunet_CHD"
 cd "${REPO}"
 
@@ -51,7 +55,7 @@ RUN_RECORD="${CKPT_DIR}/runs/5fold_$(date -u +%Y%m%dT%H%M%SZ)_${SLURM_JOB_ID:-ma
 mkdir -p "${RUN_RECORD}"
 cp "scripts/CHD_Dataset200_train5fold.sh" "${RUN_RECORD}/"
 stamp_provenance "D200-5fold" "${RUN_RECORD}" \
-    "DATASET=${DATASET_NAME}" "TRAINER=${TRAINER}" "PLANS=${PLANS}" "FOLDS=${FOLDS[*]}"
+    "DATASET=${DATASET_NAME}" "TRAINER=${TRAINER}" "PLANS=${PLANS}" "FOLDS=${FOLDS[*]}" "nnUNet_compile=${nnUNet_compile}"
 python -m pip freeze > "${RUN_RECORD}/packages.txt"
 
 # ---- Phase 0: verify the uploaded seven-label MRI dataset ----
@@ -94,7 +98,7 @@ for FOLD in "${FOLDS[@]}"; do
     continue
   fi
   CONT=""; [ -f "${OUT}/checkpoint_latest.pth" ] && CONT="--c"
-  stamp_provenance "D200-5fold-fold${FOLD}" "${OUT}" "TRAINER=${TRAINER}" "PLANS=${PLANS}" "RUN_RECORD=${RUN_RECORD}"
+  stamp_provenance "D200-5fold-fold${FOLD}" "${OUT}" "TRAINER=${TRAINER}" "PLANS=${PLANS}" "RUN_RECORD=${RUN_RECORD}" "nnUNet_compile=${nnUNet_compile}"
   echo "[Phase 2] train ${TRAINER} fold ${FOLD} ${CONT}"
   nnUNetv2_train "${DATASET_ID}" "${FULLRES}" "${FOLD}" -tr "${TRAINER}" -p "${PLANS}" ${CONT}
 done

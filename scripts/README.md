@@ -227,3 +227,12 @@ accessible through the established project path. Do not recreate those symlinks.
 Provenance uses the existing `logs/run_manifest.jsonl` and `PROVENANCE.txt`, plus
 per-run script, dataset checksum, package list, plans and available splits under
 `Dataset200_MRI/.checkpoints/mri/runs/`. Training was not launched during preparation.
+
+
+Dataset200 runtime fix: both MRI scripts explicitly set `nnUNet_compile=false`.
+The Sherlock nnunet310 environment could not compile Triton helpers because
+`Python.h` was missing. This bypasses the optional compiler and retains CUDA
+training, the existing model, and checkpoint resume. The setting is logged and
+included in provenance. Pull the update and resubmit the same script; no dataset
+rebuild or checkpoint deletion is needed. GPU execution of this fix still needs
+to be confirmed on Sherlock.
