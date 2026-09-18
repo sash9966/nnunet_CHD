@@ -195,7 +195,7 @@ to track all of these results in one place.
 ## Dataset200 — seven-label clinical MRI (2026-09-18)
 
 Uses the existing `all-experiments` branch, environment, bioe allocation,
-`nnUNetTrainerDA5_200epochs`, ResEnc-M plans, phase markers and `_provenance.sh`.
+`nnUNetTrainerDA5_100epochs`, ResEnc-M plans, phase markers and `_provenance.sh`.
 Dataset200_MRI contains 17 MRI cases and must already be uploaded.
 
 ```bash
@@ -211,7 +211,7 @@ Submit the held-out comparison independently (it may train alongside the all-cas
 sbatch scripts/CHD_Dataset200_train5fold.sh
 ```
 
-The first script trains fold `all` and exports `CLINIC_MODEL_all` under
+The first script trains fold `all` and exports `CLINIC_MODEL_all_100epochs` under
 `nnUNet_results/Dataset200_MRI`. The second trains folds 0–4 sequentially.
 Both run preprocessing if needed and resume latest checkpoints after walltime
 interrupts. Resubmit the same script to continue. A shared lock covers only preprocessing and initial data unpacking. A second job
@@ -219,7 +219,7 @@ waits for preparation, then releases the lock before training. The all-case job
 and the five-fold job may train concurrently on their separate GPU allocations.
 Each script uses 1 GPU, 12 CPUs, 64 GB and 72 hours, matching the existing CHD jobs.
 
-The 200-epoch run is an initial baseline, not a convergence guarantee. Five-fold
+The 100-epoch run is an initial baseline, not a convergence guarantee. Five-fold
 scores are in `fold_*/validation/summary.json`; scores from `fold_all` are in-sample.
 No CT data or CT-grid resizing is used. Environment paths go through the existing
 `nnunet_CHD/nnUNet_*` symlinks, so the prior upload under `nnUNet/nnUNet_raw` is
@@ -237,3 +237,9 @@ training, the existing model, and checkpoint resume. The setting is logged and
 included in provenance. Pull the update and resubmit the same script; no dataset
 rebuild or checkpoint deletion is needed. GPU execution of this fix still needs
 to be confirmed on Sherlock.
+
+Dataset200 now uses the existing 100-epoch trainer for both runs. Its results live
+in `nnUNetTrainerDA5_100epochs__nnUNetResEncUNetMPlans__3d_fullres`, separate from
+the previous 200-epoch checkpoints. Preprocessing is reused. The all-case export
+is `CLINIC_MODEL_all_100epochs`, preserving earlier exports. Already-submitted
+jobs keep their original trainer; this change applies when resubmitting.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_Dataset200_train5fold.sh
-#  Dataset200_MRI: 17 seven-label MRI cases; ResEnc-M / DA5 / 200 epochs.
+#  Dataset200_MRI: 17 seven-label MRI cases; ResEnc-M / DA5 / 100 epochs.
 #  Train folds 0–4 sequentially; held-out validation uses native MRI labels.
 #  Same environment, phase markers and provenance as the existing CHD scripts.
 #  Added 2026-09-18. Submit this script directly with sbatch.
@@ -43,7 +43,7 @@ cd "${REPO}"
 DATASET_ID=200
 DATASET_NAME="Dataset200_MRI"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"
-TRAINER="nnUNetTrainerDA5_200epochs"; FOLDS=(0 1 2 3 4)
+TRAINER="nnUNetTrainerDA5_100epochs"; FOLDS=(0 1 2 3 4)
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/mri"
 MODELDIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
 mkdir -p "${CKPT_DIR}" "${REPO}/logs"

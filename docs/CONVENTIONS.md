@@ -108,7 +108,7 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 
 ## Dataset200 MRI (2026-09-18)
 - `Dataset200_MRI`: 17 seven-label clinical MRI cases; independent from the CT datasets.
-- `scripts/CHD_Dataset200_mri.sh`: existing DA5 200-epoch trainer, ResEnc-M, fold `all`, exports `CLINIC_MODEL_all`.
+- `scripts/CHD_Dataset200_mri.sh`: existing DA5 100-epoch trainer, ResEnc-M, fold `all`, exports `CLINIC_MODEL_all_100epochs`.
 - `scripts/CHD_Dataset200_train5fold.sh`: same settings, folds 0–4 sequentially for held-out evaluation.
 - Use normal `git pull` on `all-experiments`, then direct `sbatch scripts/CHD_Dataset200_*.sh`; no submission wrapper.
 - Preserve native MRI input geometry; the CT-specific ImageCHD-grid inference route above does not apply to this MRI-trained model.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 #  CHD_Dataset200_mri.sh
-#  Dataset200_MRI: 17 seven-label MRI cases; ResEnc-M / DA5 / 200 epochs.
+#  Dataset200_MRI: 17 seven-label MRI cases; ResEnc-M / DA5 / 100 epochs.
 #  Train fold all on every MRI, then export the model for review.
 #  Same environment, phase markers and provenance as the existing CHD scripts.
 #  Added 2026-09-18. Submit this script directly with sbatch.
@@ -43,7 +43,7 @@ cd "${REPO}"
 DATASET_ID=200
 DATASET_NAME="Dataset200_MRI"
 PLANNER="nnUNetPlannerResEncM"; PLANS="nnUNetResEncUNetMPlans"; FULLRES="3d_fullres"
-TRAINER="nnUNetTrainerDA5_200epochs"; FOLDS=(all)
+TRAINER="nnUNetTrainerDA5_100epochs"; FOLDS=(all)
 CKPT_DIR="${nnUNet_results}/${DATASET_NAME}/.checkpoints/mri"
 MODELDIR="${nnUNet_results}/${DATASET_NAME}/${TRAINER}__${PLANS}__${FULLRES}"
 mkdir -p "${CKPT_DIR}" "${REPO}/logs"
@@ -124,7 +124,7 @@ if [ -f "${nnUNet_preprocessed}/${DATASET_NAME}/splits_final.json" ]; then
 fi
 
 # ---- Phase 3: export the all-case model for review/handoff ----
-EXPORT="${nnUNet_results}/${DATASET_NAME}/CLINIC_MODEL_all"
+EXPORT="${nnUNet_results}/${DATASET_NAME}/CLINIC_MODEL_all_100epochs"
 mkdir -p "${EXPORT}/fold_all"
 cp "${MODELDIR}/fold_all/checkpoint_final.pth" "${EXPORT}/fold_all/"
 for j in plans.json dataset.json dataset_fingerprint.json; do
@@ -132,7 +132,7 @@ for j in plans.json dataset.json dataset_fingerprint.json; do
 done
 stamp_provenance "D200-MRI-export-all" "${EXPORT}" "TRAINER=${TRAINER}" "PLANS=${PLANS}" "RUN_RECORD=${RUN_RECORD}" "nnUNet_compile=${nnUNet_compile}"
 cat > "${EXPORT}/HOW_TO_USE.txt" <<USAGE
-Dataset200_MRI: 17 MRI cases, seven foreground classes, DA5 200 epochs, fold all.
+Dataset200_MRI: 17 MRI cases, seven foreground classes, DA5 100 epochs, fold all.
 All cases were used for training. Any fold_all validation is IN-SAMPLE.
 Use the separate five-fold run for held-out performance; clinical review is required.
 Native MRI prediction (CASE_0000.nii.gz; no CT-grid resize):
