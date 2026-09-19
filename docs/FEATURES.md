@@ -325,3 +325,11 @@ reads source read-only and writes only new datasets. Full guide:
 **Tests:** `tests/test_chd_landmarks.py` (13 synthetic, no trainer import)
 **Pairs with trainer:** `nnUNetTrainerDA5DiseaseLandmark` (§2)
 **Limitations:** no `pulmonary_veins` label → APVC/TAPVR not derivable; no HLHS column in xlsx → HLHS dormant. Diagnosis flags assumed given (not a diagnostic tool).
+
+## MRI Boston expansion (2026-09-18)
+- Dataset201: 17 clinical + 10 reviewed Boston; matched clinical five-fold splits and all-case training, DA5 100 epochs.
+- Dataset202: review-gated pseudo myocardium, preserving six human labels; all-case training only to avoid teacher leakage in clinical CV.
+- Flat scripts: `CHD_Dataset201_mri.sh`, `CHD_Dataset201_train5fold.sh`, `CHD_Dataset201_predict_boston.sh`, `CHD_Dataset202_mri.sh`.
+- `tools/mri_boston.py`: builds cohorts, writes splits, scores six original predicted structures, prepares review and validates approval hashes.
+- `nnUNetTrainerDA5CaseWeighted_100epochs`: existing case-sampling trainer at 100 epochs; uniform defaults, optional clinical weighting.
+- Full protocol, evidence, limits and commands: [MRI_BOSTON_EXPERIMENT.md](MRI_BOSTON_EXPERIMENT.md).

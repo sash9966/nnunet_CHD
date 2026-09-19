@@ -113,3 +113,10 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - Use normal `git pull` on `all-experiments`, then direct `sbatch scripts/CHD_Dataset200_*.sh`; no submission wrapper.
 - Preserve native MRI input geometry; the CT-specific ImageCHD-grid inference route above does not apply to this MRI-trained model.
 - Reuse `_provenance.sh`, project symlink paths and existing environment activation. The two jobs can train concurrently; only preprocessing and initial unpacking are serialized.
+
+## Dataset201/202 MRI (2026-09-18)
+- 201 = 17 clinical + 10 reviewed Boston; remaining 50 in imagesTs/labelsTs, six GT classes only.
+- 202 = 201 + reviewed pseudo myocardium on Boston; default equal case sampling; optional clinical weighting.
+- 201 clinical validation matches 200. 202 fold_all teacher precludes ordinary unbiased clinical CV.
+- CaseWeighted now also has `_100epochs`; existing CT trainers/settings unchanged.
+- Native MRI inference, no CT grid conversion or automatic largest-component cleanup.

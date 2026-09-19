@@ -32,5 +32,6 @@ def _mk_epochs(base_cls, n):
     return _E
 
 
+nnUNetTrainerDA5CaseWeighted_100epochs = _mk_epochs(nnUNetTrainerDA5CaseWeighted, 100)
 nnUNetTrainerDA5CaseWeighted_200epochs = _mk_epochs(nnUNetTrainerDA5CaseWeighted, 200)
 nnUNetTrainerDA5CaseWeighted_500epochs = _mk_epochs(nnUNetTrainerDA5CaseWeighted, 500)

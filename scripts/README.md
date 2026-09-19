@@ -243,3 +243,22 @@ in `nnUNetTrainerDA5_100epochs__nnUNetResEncUNetMPlans__3d_fullres`, separate fr
 the previous 200-epoch checkpoints. Preprocessing is reused. The all-case export
 is `CLINIC_MODEL_all_100epochs`, preserving earlier exports. Already-submitted
 jobs keep their original trainer; this change applies when resubmitting.
+
+### MRI: reviewed Boston expansion
+
+Use normal `git pull` on `all-experiments`, then:
+
+```bash
+sbatch scripts/CHD_Dataset201_mri.sh
+sbatch scripts/CHD_Dataset201_train5fold.sh
+# Once the all-case model finishes:
+sbatch scripts/CHD_Dataset201_predict_boston.sh
+# After reviewing myocardium and building Dataset202:
+sbatch scripts/CHD_Dataset202_mri.sh
+```
+
+All use 100 epochs and the existing environment. Training jobs are independent
+once shared preparation finishes. Dataset201 validates only the same clinical
+patients as Dataset200. Dataset202 uses new clinical evaluation instead of leaky
+ordinary CV. See [the full protocol](../docs/MRI_BOSTON_EXPERIMENT.md) for building
+Dataset202, review requirements, weighting and scientific limitations.

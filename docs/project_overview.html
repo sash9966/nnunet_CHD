@@ -219,6 +219,18 @@
 </style>
 </head>
 <body>
+<section style="margin:24px;padding:20px;border:1px solid #64748b">
+<h2>MRI Boston expansion — 2026-09-18</h2>
+<p>Dataset201: 17 clinical + 10 reviewed Boston MRIs. DA5 / ResEnc-M / 100 epochs;
+all-case and five-fold scripts in the existing scripts folder. Clinical validation
+patients match Dataset200; Boston stays in training.</p>
+<p>Dataset202 adds reviewed pseudo myocardium while retaining six human Boston
+labels. All-case training only: its teacher saw all clinical training cases.
+Equal case sampling by default; clinical weighting is an optional experiment.</p>
+<p><a href="MRI_BOSTON_EXPERIMENT.md">Protocol, evidence, review steps and run commands</a>.
+The 45 new clinical cases can compare models; selection on them requires separate
+final validation before claiming independent performance of the chosen model.</p>
+</section>
 
 <!-- ── NAV ── -->
 <nav>
