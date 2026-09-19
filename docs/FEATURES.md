@@ -349,3 +349,7 @@ Seed-check follow-up: relative-core placement replaces fixed-inset-only placemen
 - `tools/evaluate_refinement_models.py`: legacy ImageCHD-grid route, native backprojection `--no-lcc`, per-fold/ensemble outputs in D080 `predictions/ds094_*` through `ds097_*`, metrics and complete-case provenance checks.
 - D094 `ImageCHDPseudoBaseline`, D095 `ImageCHDRefinedChambers`, D096 `ImageCHDRefinedSeqSeg`, D097 `ImageCHDRefinedCombined`; D093 preserved. Same conventional trainer/plans names as D091/D092, frozen D090 plan contents.
 - `tests/test_refinement_launch_eval.py`: scheduler dependency/duplicate guards and actual final-mask metrics; 23 tests total with refinement regression suite. No new trainer.
+
+### Baseline reuse and conservative chambers (supersedes initial launcher)
+
+Reuse existing D090 baseline (97 ImageCHD + original 50 pseudo cases), not D091 (+9 cases). No D094 build/train/evaluation; new models are D095–D097 only. `tools/verify_refinement_baseline.py` checks source/model metadata and required existing predictions/checkpoints, recording hashes without changing those files. Builder rejects different source seed bytes or plans. Default chamber refinement is now additive union, with exact seed preservation asserted; optional replacement remains explicit. Default run directory is `accepted50_conservative_v3`. Launcher tests enforce no baseline training tasks.

@@ -13,7 +13,7 @@
 #SBATCH --error=logs/refine4_%A_%a.err
 set -euo pipefail
 REPO="${REPO:-/scratch/users/sastocke/nnunet_CHD}"
-RUN="${RUN:-$REPO/refinement_runs/accepted50_two_bifurcations_v2}"
+RUN="${RUN:-$REPO/refinement_runs/accepted50_conservative_v3}"
 export RUN REPO
 export NNI_MODEL="${NNI_MODEL:-/scratch/users/sastocke/chd_refinement/models/nninteractive/models/nnInteractive_v1.0}"
 export SEQSEG_MODEL="${SEQSEG_MODEL:-/scratch/users/sastocke/chd_refinement/seqseg_weights/aorta_ct_mr/Dataset006_SEQAORTANDFEMOCT/nnUNetTrainer__nnUNetPlans__3d_fullres}"
@@ -36,12 +36,13 @@ python -c 'import sys; assert sys.version_info >= (3, 10), "Expected Python >=3.
 ARMS=(baseline chambers seqseg combined)
 case "$STAGE" in
   prepare)
+    python tools/verify_refinement_baseline.py --run "$RUN" --folds "${FOLDS:-0,1,2,3,4}"
     if [ ! -f "$RUN/training.json" ]; then
       python - <<'CHECK'
 import os
 from pathlib import Path
 for key in ('nnUNet_raw', 'nnUNet_preprocessed', 'nnUNet_results'):
-    for dataset in range(94, 98):
+    for dataset in range(95, 98):
         matches = list(Path(os.environ[key]).glob('Dataset%03d_*' % dataset))
         if matches:
             raise SystemExit('Dataset ID occupied; refusing overwrite: '+str(matches))

@@ -15,7 +15,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from refinement_common import ARMS, chamber_prompts, compose, directed_seeds, load_label, save_label, write_json
 from seqseg_bounded import bound_next, instrument, tag_step
-from build_refinement_ablation import build, fixed_plans, validate_splits, validate_training
+from build_refinement_ablation import PLANS, build, fixed_plans, validate_splits, validate_training
 from run_refinement_ablation import assemble, complete, evaluate, init, is_complete, read_run
 
 
@@ -161,11 +161,11 @@ class RefinementRegressionTests(unittest.TestCase):
             init(SimpleNamespace(run=str(root), accepted_csv=str(selection), case_report=None,
                  all_cases=False, cases=None, expected_cases=1, images_dir=str(source/'imagesTr'),
                  seeds_dir=str(source/'labelsTr'), min_retention=.7, max_growth=4., vessel_max_growth=20.,
-                 no_cleanup=False, prompt_margin_mm=1., seed_inset_mm=5., vessel_mode='union'))
+                 no_cleanup=False, prompt_margin_mm=1., seed_inset_mm=5., vessel_mode='union', chamber_mode='union'))
             cfg = read_run(root)
             folder = root/'nni'/'pseudo'; files = []
             for sid in range(1, 5):
-                p = folder/('%d.nii.gz' % sid); save_label(p, seed == sid, ref); files.append(p)
+                p = folder/('%d.nii.gz' % sid); save_label(p, np.zeros_like(seed) if sid == 1 else seed == sid, ref); files.append(p)
             complete(folder, files)
             for sid in (6, 7):
                 folder = root/'seqseg'/'pseudo'/str(sid); candidate = seed == sid
@@ -179,21 +179,26 @@ class RefinementRegressionTests(unittest.TestCase):
                 self.assertTrue(is_complete(root/'arms'/arm))
                 _, label = load_label(root/'arms'/arm/'pseudo.nii.gz', ref)
                 np.testing.assert_array_equal(label == 5, seed == 5)
+                np.testing.assert_array_equal(label == 1, seed == 1)
                 self.assertEqual(label[10, 7, 2], 6 if arm in ('seqseg', 'combined') else 0)
             evaluate(SimpleNamespace(arms=ARMS, gt_dir=str(source/'labelsTr')), root, cfg)
             self.assertEqual(len((root/'scores.csv').read_text().splitlines()), 33)
             write_json(source/'dataset.json', {'file_ending': '.nii.gz', 'channel_names': {'0': 'CT'},
                        'labels': {str(i): i for i in range(8)}, 'numTraining': 2})
             write_json(pre/source_name/'splits_final.json', [{'train': ['pseudo'], 'val': ['expert']}]*5)
-            plans = pre/source_name/'reference.json'
+            plans = pre/source_name/(PLANS+'.json')
             write_json(plans, {'dataset_name': source_name, 'plans_name': 'original',
                        'configurations': {'3d_fullres': {'spacing': [1., 1., 1.], 'data_identifier': 'original'}}})
             build(SimpleNamespace(raw=str(raw), preprocessed=str(pre), source_dataset=source_name,
-                  reference_plans=str(plans), results=str(base/'results'), dataset_ids=[194, 195, 196, 197]), root)
+                  reference_plans=str(plans), results=str(base/'results'), dataset_ids=[195, 196, 197]), root)
             for arm in ARMS:
                 study, entry = validate_training(root, arm)
                 self.assertEqual(set(entry['labels']), {'pseudo', 'expert'})
                 self.assertEqual(study['splits'][0]['val'], ['expert'])
+                if arm == 'baseline':
+                    self.assertTrue(entry['reused'])
+                    self.assertEqual(entry['dataset'], source_name)
+            self.assertFalse(any(raw.glob('Dataset194_*')))
             save_label(source/'labelsTr'/'pseudo.nii.gz', np.zeros_like(seed), ref)
             with self.assertRaisesRegex(ValueError, 'Input changed'):
                 read_run(root)

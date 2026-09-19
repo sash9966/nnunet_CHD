@@ -55,6 +55,8 @@ def main():
     ap.add_argument('--folds', choices=['0', '0,1,2,3,4'], default='0,1,2,3,4')
     args = ap.parse_args(); root = Path(args.run).absolute()
     study, entry = validate_training(root, args.arm)
+    if entry.get('reused'):
+        raise ValueError('Use the existing D090 baseline predictions; this evaluator runs the three new arms')
     raw = Path(entry['raw']).parent; results = Path(os.environ['nnUNet_results'])
     d080 = raw/'Dataset080_ClinicalCaseSanjibDetailed'
     images, references = d080/'imagesTr', d080/'labelsTr'

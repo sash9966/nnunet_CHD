@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build matched four-arm datasets; freeze plans, normalization, cohort and splits.
 
-No case additions/removals per arm. Existing datasets are never overwritten. New dataset IDs
-are required because the baseline resets all selected cases to the same seed-model source.
+No case additions/removals per arm. Existing datasets are never overwritten. The unchanged baseline reuses the source D090 dataset; only the three refinement datasets
+are constructed.
 """
 import argparse
 import copy
@@ -50,11 +50,14 @@ def build(args, root):
     splits_path = pre/args.source_dataset/'splits_final.json'
     splits = json.loads(splits_path.read_text()); validate_splits(splits, cohort, selected)
     plan_path = Path(args.reference_plans).absolute(); reference = json.loads(plan_path.read_text())
+    source_plan = pre/args.source_dataset/(PLANS+'.json')
+    if json.loads(source_plan.read_text()) != reference:
+        raise ValueError('Baseline reuse requires the unchanged source plans')
     dj = json.loads((source/'dataset.json').read_text())
     if dj.get('file_ending') != '.nii.gz' or len(dj['channel_names']) != 1 or set(dj['labels'].values()) != set(range(8)):
         raise ValueError('Expected single-channel CHD dataset with labels 0..7')
-    if len(set(args.dataset_ids)) != 4:
-        raise ValueError('Four unique dataset IDs required')
+    if len(set(args.dataset_ids)) != 3:
+        raise ValueError('Three unique refinement dataset IDs required')
     for arm in ARMS:
         if not is_complete(root/'arms'/arm):
             raise ValueError('Incomplete arm: ' + arm)
@@ -65,11 +68,13 @@ def build(args, root):
             raise ValueError('Missing source image/label: ' + case)
         if case in selected and sha256(image) != cfg['cases'][case]['image_sha256']:
             raise ValueError('Refinement used a different image: ' + case)
+        if case in selected and sha256(label) != cfg['cases'][case]['seed_sha256']:
+            raise ValueError('Cannot reuse D090: refinement seeds differ from source labels: '+case)
         sources[case] = {'image': str(image.absolute()), 'image_sha256': sha256(image),
                          'label': str(label.absolute()), 'label_sha256': sha256(label)}
     identity = {'source_dataset': args.source_dataset, 'cohort': sources,
                 'split_sha256': sha256(splits_path), 'reference_plan_sha256': sha256(plan_path),
-                'arms': {a: {'id': i, 'dataset': 'Dataset%03d_%s' % (i, {'baseline': 'ImageCHDPseudoBaseline', 'chambers': 'ImageCHDRefinedChambers', 'seqseg': 'ImageCHDRefinedSeqSeg', 'combined': 'ImageCHDRefinedCombined'}[a])} for a, i in zip(ARMS, args.dataset_ids)}}
+                'arms': {a: {'id': i, 'dataset': 'Dataset%03d_%s' % (i, {'baseline': 'ImageCHDPseudoBaseline', 'chambers': 'ImageCHDRefinedChambers', 'seqseg': 'ImageCHDRefinedSeqSeg', 'combined': 'ImageCHDRefinedCombined'}[a])} for a, i in zip(ARMS[1:], args.dataset_ids)}}
     if (root/'training.json').exists():
         raise ValueError('Training datasets already built; use preprocess/train stages')
     # Check every destination before any mutation; never clobber or recycle an existing dataset ID.
@@ -93,10 +98,13 @@ def build(args, root):
         entry['plans_sha256'] = sha256(pp/(PLANS+'.json'))
         write_json(dst/'refinement_manifest.json', {'run': str(root), 'arm': arm, 'selected': sorted(selected),
                                                    'label_sha256': entry['labels'], 'policy': cfg['policy']})
+    identity['arms']['baseline'] = {'id': int(args.source_dataset[7:10]), 'dataset': args.source_dataset,
+        'raw': str(source), 'preprocessed': str(pre/args.source_dataset), 'reused': True,
+        'labels': {c: item['label_sha256'] for c, item in sources.items()}, 'plans_sha256': sha256(source_plan)}
     identity['plans'] = PLANS; identity['trainer'] = TRAINER
     identity['splits'] = splits
     write_json(root/'training.json', identity)
-    print('Built four datasets with %d identical cases and frozen plans/splits' % len(cohort))
+    print('Reused D090 baseline; built three datasets with %d matched cases' % len(cohort))
 
 
 def validate_training(root, arm):
@@ -117,6 +125,8 @@ def validate_training(root, arm):
 
 def preprocess(args, root):
     study, entry = validate_training(root, args.arm)
+    if entry.get('reused'):
+        raise ValueError('Baseline is reused; do not preprocess it')
     pp = Path(entry['preprocessed']); marker = pp/'refinement_preprocessing_complete.json'
     if marker.exists():
         record = json.loads(marker.read_text())
@@ -144,6 +154,8 @@ def preprocess(args, root):
 
 def train(args, root):
     study, entry = validate_training(root, args.arm)
+    if entry.get('reused'):
+        raise ValueError('Baseline is reused; do not retrain it')
     if not (Path(entry['preprocessed'])/'refinement_preprocessing_complete.json').is_file():
         raise ValueError('Preprocess this arm before training')
     results = Path(args.results).absolute(); os.environ['nnUNet_results'] = str(results)
@@ -170,7 +182,7 @@ def main():
     sub = ap.add_subparsers(dest='stage', required=True)
     p = sub.add_parser('build'); p.add_argument('--raw', required=True); p.add_argument('--preprocessed', required=True)
     p.add_argument('--source-dataset', default='Dataset090_ImageCHDPseudoCombined')
-    p.add_argument('--results', default=os.environ.get('nnUNet_results', 'nnUNet_results')); p.add_argument('--reference-plans', required=True); p.add_argument('--dataset-ids', type=int, nargs=4, default=[94,95,96,97])
+    p.add_argument('--results', default=os.environ.get('nnUNet_results', 'nnUNet_results')); p.add_argument('--reference-plans', required=True); p.add_argument('--dataset-ids', type=int, nargs=3, default=[95,96,97])
     p = sub.add_parser('preprocess'); p.add_argument('--arm', choices=ARMS, required=True); p.add_argument('--workers', type=int, default=4)
     p = sub.add_parser('train'); p.add_argument('--arm', choices=ARMS, required=True)
     p.add_argument('--fold', type=int, choices=range(5), required=True); p.add_argument('--results', required=True)

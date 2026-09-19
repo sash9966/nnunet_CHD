@@ -91,7 +91,7 @@ def init(args):
               'cleanup': not args.no_cleanup, 'prompt_margin_mm': args.prompt_margin_mm,
               'seed_inset_mm': args.seed_inset_mm,
               'arbitration': 'own_seed_or_background; conflicting_background_abstains',
-              'vessel_mode': args.vessel_mode}
+              'vessel_mode': args.vessel_mode, 'chamber_mode': args.chamber_mode}
     if not 0 <= args.min_retention <= 1 or args.max_growth < 1 or args.vessel_max_growth < 1 or args.prompt_margin_mm <= 0 or args.seed_inset_mm <= 0:
         raise ValueError('Invalid policy thresholds')
     cfg = {'schema': 1, 'cases': inputs, 'policy': policy, 'selection': selection}
@@ -239,12 +239,14 @@ def assemble(args, root, cfg):
         for arm in args.arms:
             candidates = {}
             vessel_raw_counts = {}
+            chamber_raw_counts = {}
             if arm in ('chambers', 'combined'):
                 if not is_complete(root/'nni'/case):
                     raise ValueError('Missing completed nnInteractive case: ' + case)
                 for sid in range(1, 5):
                     _, a = load_label(root/'nni'/case/('%d.nii.gz' % sid), im)
-                    candidates[sid] = a > 0
+                    chamber_raw_counts[sid] = int(np.count_nonzero(a))
+                    candidates[sid] = (a > 0) | (seed == sid) if cfg['policy']['chamber_mode'] == 'union' else a > 0
             if arm in ('seqseg', 'combined'):
                 for sid in (6, 7):
                     folder = root/'seqseg'/case/str(sid)
@@ -255,6 +257,12 @@ def assemble(args, root, cfg):
                     candidates[sid] = (a > 0) | (seed == sid) if cfg['policy']['vessel_mode'] == 'union' else a > 0
             out, qc, conflicts = compose(seed, candidates, spacing, cfg['policy']['min_retention'],
                                           cfg['policy']['max_growth'], cfg['policy']['cleanup'], cfg['policy']['vessel_max_growth'])
+            if arm in ('chambers', 'combined'):
+                for sid in range(1, 5):
+                    qc['structures'][str(sid)]['proposal_mode'] = cfg['policy']['chamber_mode']
+                    qc['structures'][str(sid)]['nni_raw_candidate_voxels'] = chamber_raw_counts[sid]
+                    if cfg['policy']['chamber_mode'] == 'union' and not np.all(out[seed == sid] == sid):
+                        raise AssertionError('Conservative chamber mode removed seed voxels')
             if arm in ('seqseg', 'combined'):
                 qc['seqseg_status'] = {str(sid): json.loads((root/'seqseg'/case/str(sid)/'status.json').read_text()) for sid in (6, 7)}
                 for sid in (6, 7):
@@ -301,6 +309,7 @@ def main():
     p.add_argument('--min-retention', type=float, default=.7); p.add_argument('--max-growth', type=float, default=4.)
     p.add_argument('--vessel-max-growth', type=float, default=20.)
     p.add_argument('--no-cleanup', action='store_true'); p.add_argument('--prompt-margin-mm', type=float, default=1.)
+    p.add_argument('--chamber-mode', choices=['union', 'replace'], default='union')
     p.add_argument('--seed-inset-mm', type=float, default=5.); p.add_argument('--vessel-mode', choices=['replace', 'union'], default='union')
     p = sub.add_parser('nni'); p.add_argument('--model', required=True); p.add_argument('--fold', default='0')
     p.add_argument('--checkpoint', default='checkpoint_final.pth'); p.add_argument('--device', default='cuda:0')
