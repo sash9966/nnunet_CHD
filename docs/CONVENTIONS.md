@@ -120,3 +120,10 @@ Root cause of the failure was **input scale/grid presentation, not the model wei
 - 201 clinical validation matches 200. 202 fold_all teacher precludes ordinary unbiased clinical CV.
 - CaseWeighted now also has `_100epochs`; existing CT trainers/settings unchanged.
 - Native MRI inference, no CT grid conversion or automatic largest-component cleanup.
+
+## Accepted-50 refinement comparison (2026-09-16)
+- Read [shared refinement memory](REFINEMENT_MEMORY.md) for measured D093 failures and [runbook](refinement_four_arm.md) for current commands.
+- Use the first accepted 45 Fanwei + 5 clinical cases from D090's `split_config.csv`, not all 60 or later promoted cases. Four arms retain all 147 training cases and identical plans/splits.
+- Baseline / nnInteractive chambers only / additive SeqSeg vessels only / combined. Preserve myocardium; retain exact seed on rejection. Treat experimental automatic labels as experimental, not expert-corrected.
+- Two detected bifurcation generations must constrain both daughters; a 7-branch resource cap is not equivalent. Record incidental distal crop branches and annotation-extent disagreements.
+- Evaluate actual final masks. Dataset080 is development-exposed after debugging, despite exclusion from training; independent final cases are needed for an unbiased final claim.

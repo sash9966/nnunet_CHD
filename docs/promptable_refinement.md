@@ -1,5 +1,7 @@
 # Promptable Refinement Flywheel (workstream D)
 
+> **2026-09-16 update:** the corrected accepted-50 comparison is documented in [the four-arm runbook](refinement_four_arm.md), with observed D093 failures in [shared memory](REFINEMENT_MEMORY.md). Use the new isolated runner for this study; the implementation and assumptions below describe the historical workstream and do not establish that native-grid refinement improves labels.
+
 > **Extends the clinical pseudo-label flywheel (workstream A).** Take the clean, native-geometry
 > **LCC-postprocessed seed labels** (`predictions/*__grid2native_lcc/`) and use them to *prompt*
 > promptable / interactive foundation models — to refine the whole heart and, especially, the

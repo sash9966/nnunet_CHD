@@ -285,7 +285,7 @@ final validation before claiming independent performance of the chosen model.</p
   <!-- ── LATEST CHANGE banner ── -->
   <div class="card" style="border-left:4px solid var(--accent); margin-top:4px; background:rgba(139,92,246,0.06);">
     <div class="card-head">
-      <span class="badge badge-accent">★ Latest · 2026-08-24</span>
+      <span class="badge badge-accent">Prior milestone · 2026-08-24</span>
       <h3 style="margin-left:10px;">Clinic model shipped — <code>Dataset100</code> case-weighted all-data model, running on stock nnU-Net</h3>
     </div>
     <p><strong>Where we are:</strong> the pseudo-label flywheel ran twice and produced a deployable clinic model.
@@ -304,6 +304,15 @@ final validation before claiming independent performance of the chosen model.</p
     <code>resize → 512×512×221 → predict → backproject to native + largest-CC cleanup</code>.</p>
     <p style="margin-top:6px;color:var(--muted);">Prior highlights: septal-focus ablation (Dataset070) — weight-1.0 Tversky <em>collapses</em> the tiny class (0/13); oversample-only wins (10/13, val Dice ~0.22). Volumetric Dice <em>undersells</em> VSD (visually spot-on cases ~0.3) → report detection + centroid + NSD.</p>
     <p style="margin-top:6px;"><a href="#literature">Literature background ↓</a> · <a href="#disease-landmarks">Disease-landmark details →</a></p>
+  </div>
+
+  <!-- Accepted-50 refinement comparison, 2026-09-16 -->
+  <div class="card" style="border-left:4px solid var(--accent); margin-top:12px;">
+    <div class="card-head"><h3>2026-09-18 — matched refinement comparison, accepted 50</h3></div>
+    <p><strong>Implemented; GPU validation pending.</strong> Four arms: reused D090 LCC baseline, additive nnInteractive chambers (D095), additive SeqSeg vessels only (D096), combined (D097). All use the same <strong>97 ImageCHD + 45 Fanwei + 5 clinical = 147 cases</strong>, D090 splits and frozen spacing/architecture/normalization. Myocardium stays unchanged. The clinical-spacing experiment is on hold.</p>
+    <p><strong>D093 audit:</strong> raw chamber masks bypassed cleanup; first-writer merging consumed later labels and fallback voxels; 11/48 SeqSeg volumes were already tiny before conversion; previous evaluation did not consistently score the actual combined masks. CHIPS016 direct RA Dice fell 0.8890 → 0.6787 and PA 0.7925 → 0.5014. Downstream D093 results were mixed, not uniformly worse.</p>
+    <p><strong>Fixes:</strong> auditable interior prompts, directed vessel seeds moved inward past thin spurs using measured path radius, at most two detected bifurcation generations on both daughters, additive seed preservation, seed-connected cleanup and simultaneous conflict arbitration. Two-generation tracing does not guarantee exact annotation extent; local crops can contain distal stubs. Empty candidates and fallbacks remain visible, and no arm drops cases.</p>
+    <p><strong>Launch:</strong> <code>bash scripts/CHD_refinement_submit.sh</code> chains five-fold training of D095–D097 and matched D080 evaluation, with outputs in the usual <code>predictions/ds095_*</code> through <code>ds097_*</code> folders. Existing <code>ds090_*</code> baseline results are reused; no baseline retraining. Chamber LCC voxels are preserved exactly. D093 is preserved. <a href="refinement_four_arm.md">Runbook and training commands</a> · <a href="REFINEMENT_MEMORY.md">Shared Claude/Codex debugging memory</a>. Dataset080 has informed debugging and is development-exposed; native output spacing alone does not establish better labels.</p>
   </div>
 
   <!-- ── Current focus call-out ── -->
